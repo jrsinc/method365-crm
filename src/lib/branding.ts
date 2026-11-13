@@ -1,0 +1,42 @@
+import "server-only";
+import { all, run } from "./db";
+
+/**
+ * The customer company using the CRM (e.g. Jupiter, who bought method365 CRM). Its admin sets the
+ * name, logo and contact details once; they appear on every document (quote PDFs), the sign-in page
+ * and the menu. method365 CRM stays as the product name ("Powered by method365 CRM").
+ */
+export type Branding = {
+  company_name: string; company_address: string; company_phone: string; company_email: string;
+  company_website: string; company_tax_id: string; document_footer: string;
+  /** Cache-busting version of the logo, or "" when there is no logo. */
+  logo_version: string;
+};
+
+export const BRAND_KEYS = ["company_name", "company_address", "company_phone", "company_email", "company_website", "company_tax_id", "document_footer"] as const;
+export const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+export const LOGO_MAX_BYTES = 1024 * 1024;
+
+export function getBranding(): Branding {
+  const rows = all<{ key: string; value: string }>("SELECT key, value FROM settings WHERE key LIKE 'brand:%'");
+  const m = Object.fromEntries(rows.map((r) => [r.key.slice(6), r.value]));
+  const b = Object.fromEntries(BRAND_KEYS.map((k) => [k, m[k] ?? ""])) as Omit<Branding, "logo_version">;
+  return { ...b, logo_version: m.logo_data ? m.logo_updated ?? "1" : "" };
+}
+
+export const logoUrl = (b: Branding) => (b.logo_version ? `/api/branding/logo?v=${encodeURIComponent(b.logo_version)}` : null);
+
+export function getLogo(): { type: string; bytes: Buffer } | null {
+  const rows = all<{ key: string; value: string }>("SELECT key, value FROM settings WHERE key IN ('brand:logo_data', 'brand:logo_type')");
+  const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  if (!m["brand:logo_data"]) return null;
+  return { type: m["brand:logo_type"] || "image/png", bytes: Buffer.from(m["brand:logo_data"], "base64") };
+}
+
+export function setBrand(key: string, value: string) {
+  run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", `brand:${key}`, value);
+}
+
+export function removeLogo() {
+  run("DELETE FROM settings WHERE key IN ('brand:logo_data', 'brand:logo_type', 'brand:logo_updated')");
+}
