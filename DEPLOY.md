@@ -13,7 +13,7 @@ The CRM is a Next.js app with a built-in SQLite database (one file). Production 
 
 ## 1. Get the code
 
-The repository is private: <https://github.com/jrsinc/method365-crm>
+The repository is public, so no GitHub login is needed: <https://github.com/jrsinc/method365-crm>
 
 ```bash
 # on the server, as the user that will run the CRM
@@ -22,9 +22,8 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
 node -v   # must print v22.13 or newer
 
-# sign in to GitHub once (or add a read-only deploy key to the repo)
-sudo apt-get install -y gh && gh auth login
-gh repo clone jrsinc/method365-crm /opt/method365-crm
+sudo mkdir -p /opt/method365-crm && sudo chown "$USER" /opt/method365-crm
+git clone https://github.com/jrsinc/method365-crm.git /opt/method365-crm
 cd /opt/method365-crm
 npm ci
 ```
