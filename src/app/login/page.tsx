@@ -6,7 +6,8 @@ import { getBranding, logoUrl } from "@/lib/branding";
 
 export const metadata = { title: "Sign in" };
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const restored = (await searchParams).restored === "1";
   if (await getSessionUser()) redirect("/dashboard");
   const demo = process.env.SHOW_DEMO_LOGINS !== "0";
   const brand = getBranding();
@@ -25,6 +26,11 @@ export default async function LoginPage() {
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-accent-ink font-bold">{APP_NAME[0]}</span>
             <span className="text-lg font-semibold">{APP_NAME}</span>
           </div>
+        )}
+        {restored && (
+          <p className="mb-3 rounded-md bg-[var(--good-soft)] px-3 py-2 text-sm text-good" role="status">
+            The CRM was restored from a backup. Everyone has been signed out: sign in again with the password from that backup.
+          </p>
         )}
         <div className="rounded-xl border border-line bg-surface p-6 shadow-sm">
           <LoginForm />

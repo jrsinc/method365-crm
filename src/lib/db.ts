@@ -380,7 +380,19 @@ export function getDb(): DatabaseSync {
   const { n } = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
   if (n === 0) tx(() => seed());
   migrate(db);
+  // Start the nightly automatic backup once per server process.
+  if (DB_PATH !== ":memory:") setTimeout(() => { void import("./backup").then((m) => m.startAutoBackup()).catch((e) => console.error("[backup]", e)); }, 0);
   return db;
+}
+
+/** Where the live database file is (backups and restore work on this file). */
+export const DATABASE_FILE = DB_PATH;
+
+/** Close the live connection (used by restore). The next query opens the file again and runs migrations. */
+export function closeDb() {
+  const db = g.__crmDb;
+  g.__crmDb = undefined;
+  if (db) try { db.close(); } catch { /* already closed */ }
 }
 
 /** Bring an existing database up to date without losing data. Safe to run on every start. */

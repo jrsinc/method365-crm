@@ -125,7 +125,23 @@ Port 3001 stays private; only nginx (80/443) is open to the internet. You no lon
 
 ## 7. Backups (do this on day one)
 
-The whole CRM is the `data/` folder plus `.env.local`. Back up the database every night:
+The whole CRM is the `data/` folder plus `.env.local`.
+
+**Built in:** Admin → **Backup & restore** (Super Admins). It can:
+
+- make a backup now;
+- make a daily automatic backup, deleting old ones after a set number of days (30 by default);
+- download any backup;
+- restore from the list or from an uploaded `.db` file.
+
+Before a restore, the current data is saved as a "Before restore" backup, and everyone is signed out afterwards.
+
+| Setting | Meaning |
+|---|---|
+| `BACKUP_DIR` | optional; where backups are kept. Default `data/backups` |
+| `BACKUP_COPY_DIR` | optional; a second folder that gets a copy of every backup (e.g. a OneDrive-synced or network folder), so a disk failure doesn't take the backups with it |
+
+You can also take an extra nightly copy from the operating system:
 
 ```bash
 mkdir -p /opt/method365-crm/backups
