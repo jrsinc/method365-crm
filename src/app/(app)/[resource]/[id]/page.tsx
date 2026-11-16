@@ -13,7 +13,7 @@ import { discountDeciders, discountLimit } from "@/lib/discounts";
 import { canReview } from "@/lib/reviews";
 import { Icon } from "@/components/icons";
 import { QuickStatus } from "@/components/quick-status";
-import { fieldText, relative, FIELD_LABELS } from "@/lib/format";
+import { dateTime, fieldText, relative, FIELD_LABELS } from "@/lib/format";
 import { all, get } from "@/lib/db";
 import { baseCurrency } from "@/lib/settings";
 import { DEAL_STAGES, QUOTE_STATUSES } from "@/lib/config";
@@ -28,7 +28,11 @@ import { QuoteItems } from "@/components/quote-items";
 import { DealLines } from "@/components/deal-lines";
 import { addDealLine, addNewProductLine, removeDealLine } from "@/lib/actions/deal-lines";
 import { PRODUCT_TYPES } from "@/lib/config";
+import { GOODS_SQL, LINE_GOODS_SQL, type GoodsInfo } from "@/lib/goods";
 import { headers } from "next/headers";
+import { inquiryEmail } from "@/lib/sourcing-mail";
+import { draftSourcingInquiry } from "@/lib/actions/sourcing";
+import { connection as outlookConnection, mailActionsEnabled } from "@/lib/outlook";
 
 export async function generateMetadata({ params }: { params: Promise<{ resource: string; id: string }> }) {
   const def = getResource((await params).resource);
@@ -76,6 +80,7 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
           {def.key === "quotes" && editable && <StageBar row={row} resource="quotes" field="status" options={QUOTE_STATUSES} noun="quote" />}
           {def.key === "quotes" && <DiscountPanel row={row} user={user} />}
           {def.key === "quotes" && <SalesOrderPanel row={row} editable={editable} />}
+          {def.key === "sourcing" && <SourcingInquiryPanel row={row} user={user} />}
           <Card title="Details">
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               {def.fields.map((f) => {
@@ -120,8 +125,8 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
           {def.timeline && <Timeline def={def} id={id} user={user} self={self} />}
           <Card title="Record info">
             <dl className="space-y-1 text-xs text-ink-2">
-              <div className="flex justify-between"><dt>Created</dt><dd>{relative(row.created_at)}</dd></div>
-              <div className="flex justify-between"><dt>Last updated</dt><dd>{relative(row.updated_at)}</dd></div>
+              <div className="flex justify-between gap-3"><dt>Created</dt><dd className="text-right">{dateTime(row.created_at)}</dd></div>
+              <div className="flex justify-between gap-3"><dt>Last updated</dt><dd className="text-right">{dateTime(row.updated_at)}</dd></div>
             </dl>
           </Card>
         </aside>
@@ -176,6 +181,54 @@ function DiscountPanel({ row, user }: { row: Row; user: SessionUser }) {
 }
 
 /** Won/Accepted quote → one "Create sales order" button. Goes to the ERP once one is connected (lib/erp.ts). */
+/** Supplier inquiry email for a sourcing request: preview, then a draft in the user's own Outlook to review and send. */
+function SourcingInquiryPanel({ row, user }: { row: Row; user: SessionUser }) {
+  const id = row.id as string;
+  const mail = inquiryEmail(id, user);
+  if (!mail) return null;
+  const connected = !!outlookConnection(user.id);
+  const canDraft = connected && mailActionsEnabled(user.id);
+  const mailto = mail.to
+    ? `mailto:${encodeURIComponent(mail.to)}?subject=${encodeURIComponent(mail.subject)}&body=${encodeURIComponent(mail.text)}`
+    : null;
+  return (
+    <Card title="Supplier inquiry email">
+      <div className="space-y-3 text-sm">
+        {row.inquiry_drafted_at ? (
+          <Notice tone="green">
+            Draft created in your Outlook on {dateTime(row.inquiry_drafted_at)}.{" "}
+            {row.inquiry_draft_link ? <a href={String(row.inquiry_draft_link)} target="_blank" rel="noreferrer" className="font-medium underline">Open the draft in Outlook</a> : "Open Outlook → Drafts to review and send it."}
+          </Notice>
+        ) : null}
+        {mail.missing.length > 0 && (
+          <Notice tone="amber">
+            To draft the email, add {mail.missing.join(", ")}.{" "}
+            {!mail.to && mail.supplierId && <Link href={`/suppliers/${mail.supplierId}/edit`} className="font-medium underline">Edit supplier</Link>}
+          </Notice>
+        )}
+        <dl className="grid grid-cols-[70px_1fr] gap-x-3 gap-y-1">
+          <dt className="text-ink-3">To</dt><dd className="break-all">{mail.to ? `${mail.toName ? `${mail.toName} ` : ""}<${mail.to}>` : "—"}</dd>
+          <dt className="text-ink-3">Subject</dt><dd>{mail.subject}</dd>
+        </dl>
+        <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-surface-2 p-3 font-sans text-sm">{mail.text}</pre>
+        <div className="flex flex-wrap items-center gap-2">
+          {mail.missing.length === 0 && canDraft && (
+            <form action={draftSourcingInquiry.bind(null, id)}>
+              <Submit variant="primary">{row.inquiry_drafted_at ? "Create another draft in Outlook" : "Create draft in Outlook"}</Submit>
+            </form>
+          )}
+          {mail.missing.length === 0 && connected && !canDraft && (
+            <a href="/api/outlook/connect?add=send" className="inline-flex h-9 items-center rounded-md bg-accent px-3 font-medium text-accent-ink hover:opacity-90">Allow drafts in Outlook</a>
+          )}
+          {mail.missing.length === 0 && !connected && <LinkButton href="/outlook" variant="primary">Connect Outlook to draft</LinkButton>}
+          {mailto && <a href={mailto} className="inline-flex h-9 items-center rounded-md border border-line px-3 font-medium hover:bg-surface-2">Open in my email app</a>}
+        </div>
+        <p className="text-xs text-ink-3">Nothing is sent from the CRM: the draft lands in your Outlook Drafts folder for you to check and send. Wording comes from the supplier, product, quantity and required expiry on this request.</p>
+      </div>
+    </Card>
+  );
+}
+
 function SalesOrderPanel({ row, editable }: { row: Row; editable: boolean }) {
   const ready = ["Won", "Accepted"].includes(String(row.status));
   const so = row.so_status as string | null;
@@ -375,7 +428,7 @@ function Timeline({ def, id, user, self }: { def: ResourceDef; id: string; user:
                   <div className="mt-2"><EmailFrame html={String(a.body_html)} maxHeight={520} /></div>
                 </details>
               ) : a.body ? <p className="mt-1 whitespace-pre-wrap text-ink-2">{String(a.body)}</p> : null}
-              <p className="mt-0.5 text-xs text-ink-3">{String(a.owner_id__label ?? "")} · {relative(a.occurred_at)}</p>
+              <p className="mt-0.5 text-xs text-ink-3">{String(a.owner_id__label ?? "")} · {dateTime(a.occurred_at)} <span className="text-ink-3">({relative(a.occurred_at)})</span></p>
             </li>
           ))}
         </ol>
@@ -426,8 +479,8 @@ function ConvertPanel({ row, editable, user }: { row: Row; editable: boolean; us
 
 function OpportunityLines({ row, editable, user }: { row: Row; editable: boolean; user: SessionUser }) {
   const id = row.id as string;
-  const lines = all<{ id: string; product_id: string | null; description: string; quantity: number; target_price: number | null; status: string | null; sku: string | null }>(
-    `SELECT l.id, l.product_id, l.description, l.quantity, l.target_price, p.status, p.sku
+  const lines = all<{ id: string; product_id: string | null; description: string; quantity: number; target_price: number | null; status: string | null; sku: string | null } & GoodsInfo>(
+    `SELECT l.id, l.product_id, l.description, l.quantity, l.target_price, p.status, p.sku, ${GOODS_SQL}
        FROM deal_lines l LEFT JOIN products p ON p.id = l.product_id WHERE l.deal_id = ? ORDER BY l.position`, id);
   const products = all<{ id: string; name: string; sku: string | null; status: string; unit_price: number }>(
     "SELECT id, name, sku, status, unit_price FROM products ORDER BY name");
@@ -450,10 +503,13 @@ function OpportunityLines({ row, editable, user }: { row: Row; editable: boolean
 }
 
 function QuoteSection({ row, editable }: { row: Row; editable: boolean }) {
-  const items = all<{ product_id: string | null; description: string; quantity: number; unit_price: number }>(
-    "SELECT product_id, description, quantity, unit_price FROM quote_items WHERE quote_id = ? ORDER BY position", row.id as string,
+  const items = all<{ product_id: string | null; description: string; quantity: number; unit_price: number } & GoodsInfo>(
+    `SELECT i.product_id, i.description, i.quantity, i.unit_price, ${LINE_GOODS_SQL}
+       FROM quote_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.quote_id = ? ORDER BY i.position`, row.id as string,
   );
-  const products = all<{ id: string; name: string; unit_price: number }>("SELECT id, name, unit_price FROM products WHERE active = 1 ORDER BY name");
+  // Every product (inactive ones only for lines that already use them) with its goods details.
+  const products = all<{ id: string; name: string; unit_price: number; active: number } & GoodsInfo>(
+    `SELECT p.id, p.name, p.unit_price, p.active, ${GOODS_SQL} FROM products p ORDER BY p.name`);
   return (
     <Card title="Line items" pad={false}>
       <QuoteItems

@@ -17,6 +17,17 @@ export function currencySymbol(code: string) {
   }
 }
 
+/** Money with exactly two decimals, as on invoices and the goods table (37,900.00). */
+export function money2(v: unknown, currency = "USD") {
+  if (v == null || v === "") return "—";
+  const n = Number(v);
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  } catch {
+    return `${currency} ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+}
+
 export function money(v: unknown, currency = "USD", compact = false) {
   if (v == null || v === "") return "—";
   const n = Number(v);
@@ -30,19 +41,43 @@ export function money(v: unknown, currency = "USD", compact = false) {
   }
 }
 
+/** Cookie holding the signed-in person's computer time zone (set by <TimeZoneSync />). */
+export const TZ_COOKIE = "tz";
+
+/**
+ * Time zone to show timestamps in. On the server this is the viewer's computer time zone for the
+ * current request (registered by the auth layer from the cookie); in the browser it's the computer's own.
+ */
+export function viewTimeZone(): string | undefined {
+  const g = globalThis as unknown as { __viewTz?: () => string | undefined };
+  return g.__viewTz?.() || undefined;
+}
+
+/** Is this a real IANA time zone name, e.g. "America/New_York"? */
+export function validTimeZone(tz: string | undefined | null): tz is string {
+  if (!tz || tz.length > 64) return false;
+  try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return true; } catch { return false; }
+}
+
 export function date(v: unknown) {
   if (!v) return "—";
   const s = String(v);
-  const d = new Date(s.length === 10 ? `${s}T00:00:00` : s.replace(" ", "T") + "Z");
+  const d = new Date(s.length === 10 ? `${s}T00:00:00Z` : s.replace(" ", "T") + "Z");
   if (Number.isNaN(d.getTime())) return s;
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: s.length === 10 ? undefined : "UTC" });
+  // A plain date has no time zone; a stored timestamp (UTC) is shown on the viewer's local calendar.
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: s.length === 10 ? "UTC" : viewTimeZone() });
 }
 
+/** Stored UTC timestamp shown in the viewer's local time, e.g. "16 Nov 2026, 12:39 PM EST". */
 export function dateTime(v: unknown) {
   if (!v) return "—";
   const d = new Date(String(v).replace(" ", "T") + "Z");
   if (Number.isNaN(d.getTime())) return String(v);
-  return d.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC";
+  const tz = viewTimeZone();
+  const day = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: tz });
+  // en-US gives the familiar abbreviation (EST, IST shows as GMT+5:30).
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: tz, timeZoneName: "short" });
+  return `${day}, ${time}`;
 }
 
 export function relative(v: unknown) {

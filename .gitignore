@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 data/
+
+# Template with no secrets (copy to .env.local)
+!.env.example

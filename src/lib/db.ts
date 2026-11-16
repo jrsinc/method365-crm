@@ -414,6 +414,19 @@ function migrate(db: DatabaseSync) {
   if (!cols("leads").includes("website")) db.exec("ALTER TABLE leads ADD COLUMN website TEXT");
   if (!cols("suppliers").includes("state")) db.exec("ALTER TABLE suppliers ADD COLUMN state TEXT");
 
+  // Products: unique material ID (NDC / EU MA / other), lot, expiry, HTS code, unit and remark.
+  const pc = cols("products");
+  for (const c of ["material_id_type", "material_id", "lot_number", "expiry", "hts_code", "uom", "remark"]) if (!pc.includes(c)) db.exec(`ALTER TABLE products ADD COLUMN ${c} TEXT`);
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_products_material_id ON products(material_id COLLATE NOCASE) WHERE material_id IS NOT NULL");
+  // Each quote line keeps its own goods details (MFG / LOT / EXP / HTS / unit can differ per quote);
+  // material ID is copied from the product. NULL = older line, falls back to the product's values.
+  const qic = cols("quote_items");
+  for (const c of ["material_id_type", "material_id", "manufacturer", "lot_number", "expiry", "hts_code", "uom"]) if (!qic.includes(c)) db.exec(`ALTER TABLE quote_items ADD COLUMN ${c} TEXT`);
+
+  // Sourcing: the expiry the customer needs, and the supplier inquiry drafted in Outlook.
+  const sc = cols("sourcing_requests");
+  for (const c of ["required_expiry", "inquiry_drafted_at", "inquiry_draft_link"]) if (!sc.includes(c)) db.exec(`ALTER TABLE sourcing_requests ADD COLUMN ${c} TEXT`);
+
   // Organogram: who reports to whom.
   const uc = cols("users");
   if (!uc.includes("manager_id")) db.exec("ALTER TABLE users ADD COLUMN manager_id TEXT REFERENCES users(id) ON DELETE SET NULL");

@@ -4,11 +4,13 @@ import { RESOURCES } from "@/lib/resources";
 import { getRecord } from "@/lib/records";
 import { all, get } from "@/lib/db";
 import { baseCurrency } from "@/lib/settings";
-import { date, money } from "@/lib/format";
+import { date, money, money2 } from "@/lib/format";
 import { APP_NAME } from "@/lib/config";
 import { PrintButton } from "./print-button";
 import { accountAddress } from "@/lib/addresses";
 import { getBranding, logoUrl } from "@/lib/branding";
+import { LINE_GOODS_SQL, type GoodsInfo } from "@/lib/goods";
+import { GoodsTable } from "@/components/goods-table";
 
 export const metadata = { title: "Quote" };
 
@@ -17,7 +19,9 @@ export default async function PrintQuote({ params }: { params: Promise<{ id: str
   const user = await requireUser();
   const q = getRecord(RESOURCES.quotes, user, id);
   if (!q) notFound();
-  const items = all<{ description: string; quantity: number; unit_price: number }>("SELECT description, quantity, unit_price FROM quote_items WHERE quote_id = ? ORDER BY position", id);
+  const items = all<{ description: string; quantity: number; unit_price: number; product_id: string | null } & GoodsInfo>(
+    `SELECT i.description, i.quantity, i.unit_price, i.product_id, ${LINE_GOODS_SQL}
+       FROM quote_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.quote_id = ? ORDER BY i.position`, id);
   const account = q.account_id ? get<{ name: string; address: string | null; city: string | null; country: string | null }>("SELECT name, address, city, country FROM accounts WHERE id = ?", q.account_id as string) : null;
   const contact = q.contact_id ? get<{ first_name: string; last_name: string | null; email: string | null }>("SELECT first_name, last_name, email FROM contacts WHERE id = ?", q.contact_id as string) : null;
   // The addresses saved on the quote; older quotes without them fall back to the account's defaults.
@@ -64,25 +68,15 @@ export default async function PrintQuote({ params }: { params: Promise<{ id: str
         </div>
       </section>
       <div className="py-3" />
-      <table className="w-full text-sm">
-        <thead><tr className="border-b-2 border-[#18181a] text-left"><th className="w-14 py-2">Sr. No.</th><th className="py-2">Description</th><th className="py-2 text-right">Qty</th><th className="py-2 text-right">Unit price</th><th className="py-2 text-right">Amount</th></tr></thead>
-        <tbody>
-          {items.map((i, n) => (
-            <tr key={n} className="border-b border-[#e3e2dd]">
-              <td className="py-2 tabular-nums">{n + 1}</td>
-              <td className="py-2">{i.description}</td>
-              <td className="py-2 text-right tabular-nums">{i.quantity}</td>
-              <td className="py-2 text-right tabular-nums">{money(i.unit_price, cur)}</td>
-              <td className="py-2 text-right tabular-nums">{money(i.quantity * i.unit_price, cur)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <GoodsTable
+        fmt={(n) => money2(n, cur)}
+        rows={items.map((i) => ({ title: i.description, goods: i, quantity: i.quantity, rate: i.unit_price }))}
+      />
       <dl className="ml-auto mt-4 w-64 space-y-1 text-sm tabular-nums">
-        <div className="flex justify-between"><dt>Subtotal</dt><dd>{money(subtotal, cur)}</dd></div>
-        {disc > 0 && <div className="flex justify-between"><dt>Discount ({String(q.discount_pct)}%)</dt><dd>−{money(disc, cur)}</dd></div>}
-        {tax > 0 && <div className="flex justify-between"><dt>Tax ({String(q.tax_pct)}%)</dt><dd>{money(tax, cur)}</dd></div>}
-        <div className="flex justify-between border-t-2 border-[#18181a] pt-1 text-base font-semibold"><dt>Total</dt><dd>{money(q.total, cur)}</dd></div>
+        <div className="flex justify-between"><dt>Subtotal</dt><dd>{money2(subtotal, cur)}</dd></div>
+        {disc > 0 && <div className="flex justify-between"><dt>Discount ({String(q.discount_pct)}%)</dt><dd>−{money2(disc, cur)}</dd></div>}
+        {tax > 0 && <div className="flex justify-between"><dt>Tax ({String(q.tax_pct)}%)</dt><dd>{money2(tax, cur)}</dd></div>}
+        <div className="flex justify-between border-t-2 border-[#18181a] pt-1 text-base font-semibold"><dt>Total</dt><dd>{money2(q.total, cur)}</dd></div>
       </dl>
       {q.terms ? <section className="mt-10 text-xs text-[#52514e]"><p className="mb-1 font-medium text-[#18181a]">Terms & conditions</p><p className="whitespace-pre-wrap">{String(q.terms)}</p></section> : null}
       <footer className="mt-10 border-t border-[#e3e2dd] pt-3 text-xs text-[#7b7a74]">

@@ -383,6 +383,7 @@ export function insertRecord(
     if (!data[def.ownerField] || (!can(user, "records.assign") && def.key !== "tasks")) data[def.ownerField] = user.id;
   }
   checkRefs(def, user, data, errors);
+  checkMaterialId(def, data, null, errors);
   if (def.key === "quotes" && user.role !== "SUPER_ADMIN" && DISCOUNT_GATED.includes(String(data.status ?? "")) && discountNeedsApproval({}, Number(data.discount_pct) || 0)) {
     errors.status = "A quote with a discount starts as Draft or Submitted; it can move on once the discount is approved.";
   }
@@ -405,6 +406,16 @@ export function insertRecord(
     }
     return { ok: true as const, id };
   });
+}
+
+/** A product's material ID (NDC / EU MA / other) must be unique, ignoring case and spaces at the ends. */
+function checkMaterialId(def: ResourceDef, data: Record<string, unknown>, selfId: string | null, errors: FieldErrors) {
+  if (def.key !== "catalogue" || data.material_id == null) return;
+  const mid = String(data.material_id).trim();
+  data.material_id = mid || null;
+  if (!mid) return;
+  const other = get<{ name: string }>("SELECT name FROM products WHERE material_id = ? COLLATE NOCASE AND id <> ?", mid, selfId ?? "");
+  if (other) errors.material_id = `Material ID ${mid} is already used by "${other.name}".`;
 }
 
 /** Opportunities above the configured threshold need a sales manager's sign-off. */
@@ -435,6 +446,7 @@ export function updateRecord(
   }
   if (def.ownerField && def.ownerField in data && !data[def.ownerField]) data[def.ownerField] = before[def.ownerField] as string;
   checkRefs(def, user, data, errors);
+  checkMaterialId(def, data, before.id as string, errors);
   if (def.key === "quotes" && user.role !== "SUPER_ADMIN" && data.status != null && data.status !== before.status && DISCOUNT_GATED.includes(String(data.status))) {
     // A discount above the limit must be approved by a manager before the quote moves forward.
     const pct = Number(data.discount_pct ?? before.discount_pct) || 0;

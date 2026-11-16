@@ -308,7 +308,8 @@ export function RecordForm({
       {Object.entries(hidden).map(([k, val]) => <input key={k} type="hidden" name={k} value={val} />)}
       {state.error && <Notice tone="red">{state.error}</Notice>}
       {before}
-      <div className={cx("grid gap-x-4 gap-y-3", compact ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3")}>
+      {/* Compact forms sit in narrow side cards (e.g. Log activity), so they stack one field per row. */}
+      <div className={cx("grid gap-x-4 gap-y-3", compact ? "grid-cols-1 [&>*]:min-w-0" : "sm:grid-cols-2 lg:grid-cols-3")}>
         {fields.filter((f) => !f.readOnly || f.name === "number").map((f) => {
           const err = state.errors?.[f.name];
           const id = `f_${f.name}`;
@@ -430,7 +431,7 @@ export function RecordForm({
             }
           }
           return (
-            <div key={f.name} className={cx(f.full && "sm:col-span-2 lg:col-span-3", compact && f.full && "sm:col-span-2")}>
+            <div key={f.name} className={cx(f.full && !compact && "sm:col-span-2 lg:col-span-3")}>
               {f.type !== "checkbox" && <Label htmlFor={id} required={f.required}>{f.label}</Label>}
               {control}
               {err ? <p id={`${id}_err`} className="mt-1 text-xs text-danger">{err}</p> : f.help ? <p className="mt-1 text-xs text-ink-3">{f.help}</p> : null}

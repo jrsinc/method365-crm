@@ -6,6 +6,7 @@ import {
   TASK_PRIORITIES, TASK_STATUSES,
   WEB_FORM_FIELDS, type Permission,
 } from "./config";
+import { MATERIAL_ID_TYPES } from "./goods";
 
 export type FieldType =
   | "text" | "email" | "phone" | "url" | "textarea" | "number" | "money" | "percent"
@@ -212,21 +213,28 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
     key: "catalogue", table: "products", label: "Product Master", singular: "Product",
     ownerField: null, managePerm: "products.manage",
     titleSql: (a) => `${a}.name`,
-    searchable: ["sku", "name", "family", "manufacturer"],
+    searchable: ["material_id", "sku", "name", "family", "manufacturer", "hts_code"],
     defaultSort: "name", importable: true,
     bulkFields: ["status", "type"],
     fields: [
-      { name: "sku", label: "Code", type: "text", list: true },
-      { name: "name", label: "Name", type: "text", required: true },
+      { name: "material_id_type", label: "Material ID type", type: "select", options: MATERIAL_ID_TYPES, default: "NDC", required: true, filter: true },
+      { name: "material_id", label: "Material ID", type: "text", required: true, list: true, help: "Unique: the NDC, EU MA or other number. No two products can share it." },
+      { name: "name", label: "Product title", type: "text", required: true, full: true },
+      { name: "manufacturer", label: "MFG (manufacturer)", type: "text", list: true },
+      { name: "lot_number", label: "LOT", type: "text", help: "Leave blank to print TBD." },
+      { name: "expiry", label: "EXP (expiry)", type: "text", help: "Date or TBD. Leave blank to print TBD." },
+      { name: "hts_code", label: "HTS code", type: "text", list: true },
+      { name: "uom", label: "Unit (per)", type: "text", default: "EACH", help: "Printed in the \"per\" column, e.g. EACH, BOX, VIAL." },
+      { name: "sku", label: "Code", type: "text" },
       { name: "type", label: "Type", type: "select", options: PRODUCT_TYPES, default: "Product", required: true, list: true, filter: true },
-      { name: "family", label: "Family", type: "text", list: true },
-      { name: "manufacturer", label: "Manufacturer", type: "text", list: true },
+      { name: "family", label: "Family", type: "text" },
       { name: "status", label: "Status", type: "select", options: PRODUCT_STATUSES, default: "Active", required: true, list: true, filter: true },
       { name: "unit_price", label: "List price", type: "money", currencyField: "currency", required: true },
       { name: "unit_cost", label: "Unit cost", type: "money", currencyField: "currency" },
       { name: "currency", label: "Currency", type: "currency" },
       { name: "tax_rate", label: "Tax rate", type: "percent" },
-      { name: "description", label: "Description", type: "textarea", full: true },
+      { name: "description", label: "Product description", type: "textarea", full: true },
+      { name: "remark", label: "Remark", type: "textarea", full: true },
     ],
   },
   quotes: {
@@ -379,6 +387,7 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
       { name: "deal_id", label: "Opportunity", type: "ref", ref: "opportunities", list: true },
       { name: "product_id", label: "Product", type: "ref", ref: "catalogue", list: true },
       { name: "quantity", label: "Quantity", type: "number", list: true },
+      { name: "required_expiry", label: "Required expiry", type: "text", help: "Shown in the supplier inquiry email, e.g. 02/2028." },
       { name: "status", label: "Status", type: "select", options: SOURCING_STATUSES, default: "Draft", required: true, list: true, filter: true },
       { name: "offer_price", label: "Offer price (unit)", type: "money", list: true },
       { name: "lead_time_days", label: "Lead time (days)", type: "number" },

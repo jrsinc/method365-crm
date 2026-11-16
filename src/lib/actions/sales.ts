@@ -11,6 +11,7 @@ import { all, get, newId, run, tx } from "../db";
 import { sendSalesOrder, type SalesOrderPayload } from "../erp";
 import { discountDeciders, discountNeedsApproval, syncDiscountApproval } from "../discounts";
 import { canReview } from "../reviews";
+import { LINE_GOODS_SQL, type GoodsInfo } from "../goods";
 
 /** A manager approves or rejects a quote's discount (password confirmed). */
 export async function decideDiscount(quoteId: string, decision: "Approved" | "Rejected", fd: FormData) {
@@ -102,8 +103,8 @@ export async function createSalesOrder(quoteId: string, fd: FormData) {
   else if (discountNeedsApproval(q!)) back(`Not sent: the ${Number(q!.discount_pct)}% discount is waiting for manager approval.`);
   if (!(await confirmEdit(user, fd.get("$confirm_password"), "quotes", quoteId))) back("Not sent: that password isn't right.");
 
-  const lines = all<{ description: string; product_id: string | null; sku: string | null; quantity: number; unit_price: number }>(
-    `SELECT i.description, i.product_id, p.sku, i.quantity, i.unit_price FROM quote_items i LEFT JOIN products p ON p.id = i.product_id
+  const lines = all<{ description: string; product_id: string | null; sku: string | null; quantity: number; unit_price: number } & GoodsInfo>(
+    `SELECT i.description, i.product_id, p.sku, i.quantity, i.unit_price, ${LINE_GOODS_SQL} FROM quote_items i LEFT JOIN products p ON p.id = i.product_id
      WHERE i.quote_id = ? ORDER BY i.position`, quoteId);
   if (!lines.length) back("Add line items to the quote before creating a sales order.");
   const contact = q!.contact_id ? get<{ email: string | null }>("SELECT email FROM contacts WHERE id = ?", String(q!.contact_id)) : undefined;
@@ -132,28 +133,42 @@ export async function createSalesOrder(quoteId: string, fd: FormData) {
   back(r.ok ? `Sales order ${r.soNumber ?? ""} created in the ERP.` : status === "Failed" ? `The ERP refused the order: ${message}` : "Sales order requested. It's waiting for the ERP connection.");
 }
 
-export type QuoteItemInput = { product_id: string | null; description: string; quantity: number; unit_price: number };
+/** A quote line. Goods details (MFG / LOT / EXP / HTS / unit) are per line; material ID is copied from the product. */
+export type QuoteItemInput = { product_id: string | null; description: string; quantity: number; unit_price: number } & GoodsInfo;
 
 export async function saveQuoteItems(quoteId: string, items: QuoteItemInput[], password: string) {
   const user = await requireUser();
   const quote = getRecord(RESOURCES.quotes, user, quoteId);
   if (!quote || !canEdit(RESOURCES.quotes, user, quote)) return { ok: false, error: "Not allowed" };
   if (!(await confirmEdit(user, password, "quotes", quoteId))) return { ok: false, error: "That password isn't right. Nothing was changed." };
+  const txt = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
   const clean = items
     .slice(0, 200)
-    .map((i) => ({
-      product_id: i.product_id && get("SELECT 1 FROM products WHERE id = ?", i.product_id) ? i.product_id : null,
-      description: String(i.description ?? "").trim().slice(0, 500),
-      quantity: Math.max(0, Number(i.quantity) || 0),
-      unit_price: Math.max(0, Number(i.unit_price) || 0),
-    }))
+    .map((i) => {
+      // Like an invoice in Tally / QuickBooks: the item's title and material ID come from the product master
+      // and can't be changed on the line; batch-type details (MFG, LOT, EXP, HTS, unit) can.
+      const p = i.product_id ? get<{ id: string; name: string; material_id_type: string | null; material_id: string | null }>(
+        "SELECT id, name, material_id_type, material_id FROM products WHERE id = ?", i.product_id) : undefined;
+      return {
+        product_id: p?.id ?? null,
+        description: p ? p.name : txt(i.description, 500),
+        material_id_type: p?.material_id_type ?? null,
+        material_id: p?.material_id ?? null,
+        manufacturer: txt(i.manufacturer), lot_number: txt(i.lot_number, 100), expiry: txt(i.expiry, 50),
+        hts_code: txt(i.hts_code, 50), uom: txt(i.uom, 20).toUpperCase(),
+        quantity: Math.max(0, Number(i.quantity) || 0),
+        unit_price: Math.max(0, Number(i.unit_price) || 0),
+      };
+    })
     .filter((i) => i.description);
   tx(() => {
     run("DELETE FROM quote_items WHERE quote_id = ?", quoteId);
     clean.forEach((i, pos) =>
       run(
-        "INSERT INTO quote_items(id, quote_id, product_id, description, quantity, unit_price, position) VALUES (?,?,?,?,?,?,?)",
+        `INSERT INTO quote_items(id, quote_id, product_id, description, quantity, unit_price, position,
+           material_id_type, material_id, manufacturer, lot_number, expiry, hts_code, uom) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         newId(), quoteId, i.product_id, i.description, i.quantity, i.unit_price, pos,
+        i.material_id_type, i.material_id, i.manufacturer, i.lot_number, i.expiry, i.hts_code, i.uom,
       ),
     );
     recalcQuote(quoteId);

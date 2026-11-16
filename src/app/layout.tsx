@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { APP_NAME } from "@/lib/config";
+import { TimeZoneSync } from "@/components/timezone-sync";
 
 export const metadata: Metadata = {
   title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body className="font-sans antialiased text-sm">
         {children}
+        <TimeZoneSync />
         <Script id="theme-init" strategy="beforeInteractive">{`try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}`}</Script>
       </body>
     </html>

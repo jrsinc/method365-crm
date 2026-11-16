@@ -6,9 +6,18 @@ import "server-only";
  * person running it is allowed to see).
  */
 export type ReportCol = { key: string; label: string; format?: "money" | "num" | "pct" | "date" | "days" };
-export type ReportDef = { slug: string; group: string; title: string; summary: string; sql: string; cols: ReportCol[] };
+/** `goods`: rows are products, shown in the shared goods format (title + NDC / MFG / LOT / EXP lines). */
+export type ReportDef = { slug: string; group: string; title: string; summary: string; sql: string; cols: ReportCol[]; goods?: boolean };
 
 export const REPORTS: ReportDef[] = [
+  {
+    slug: "product-list", group: "Products", title: "Product list", goods: true,
+    summary: "Every product in the standard goods format: material ID, MFG, LOT, EXP, HTS code, unit, price and remark.",
+    sql: `SELECT p.name AS title, p.material_id_type, p.material_id, p.manufacturer, p.lot_number, p.expiry, p.hts_code, p.uom, p.remark,
+                 p.unit_price AS rate, UPPER(COALESCE(NULLIF(TRIM(p.uom),''),'EACH')) AS per, p.currency AS currency, p.status AS status
+          FROM products p ORDER BY p.name`,
+    cols: [{ key: "hts_code", label: "HTS code" }, { key: "rate", label: "Rate", format: "money" }, { key: "per", label: "per" }, { key: "status", label: "Status" }, { key: "remark", label: "Remark" }],
+  },
   {
     slug: "pipeline-by-stage", group: "Sales", title: "Pipeline by stage",
     summary: "Count, value and weighted value of open opportunities in each stage.",

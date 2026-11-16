@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
 import { cx } from "./ui";
+import { dateTime } from "@/lib/format";
 
 const TITLES: [string, string][] = [
   ["/dashboard", "Home"], ["/analytics", "Analytics"], ["/reports", "Reports"],
@@ -91,7 +92,7 @@ export function Topbar({
                   <li key={n.id} className="border-b border-line last:border-0">
                     <Link href={n.href ?? "/dashboard"} className="block px-3 py-2 text-sm hover:bg-surface-2">
                       <span className={cx(!n.read && "font-medium")}>{n.title}</span>
-                      <span className="block text-xs text-ink-3">{n.created_at.slice(0, 16)}</span>
+                      <span className="block text-xs text-ink-3" suppressHydrationWarning>{dateTime(n.created_at)}</span>
                     </Link>
                   </li>
                 ))}

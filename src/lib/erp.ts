@@ -1,4 +1,5 @@
 import "server-only";
+import type { GoodsInfo } from "./goods";
 
 /**
  * ERP connection point for sales orders.
@@ -15,7 +16,7 @@ export type SalesOrderPayload = {
   account: { id: string | null; name: string | null }; contact: { id: string | null; name: string | null; email: string | null };
   opportunity: { id: string | null; name: string | null };
   bill_to: string | null; ship_to: string | null; terms: string | null;
-  lines: { description: string; product_id: string | null; sku: string | null; quantity: number; unit_price: number }[];
+  lines: ({ description: string; product_id: string | null; sku: string | null; quantity: number; unit_price: number } & GoodsInfo)[];
   requested_by: { id: string; name: string; email: string }; requested_at: string;
 };
 

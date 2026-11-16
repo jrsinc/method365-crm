@@ -4,8 +4,10 @@ import { useActionState, useMemo, useState } from "react";
 import type { LineState } from "@/lib/actions/deal-lines";
 import { Badge, Input, Label, Notice, Select, Button } from "./ui";
 import { Submit } from "./submit";
+import { GoodsDescription } from "./goods-table";
+import { unitOf, type GoodsInfo } from "@/lib/goods";
 
-type Line = { id: string; product_id: string | null; description: string; quantity: number; target_price: number | null; status: string | null; sku: string | null; sourcing_href: string };
+type Line = { id: string; product_id: string | null; description: string; quantity: number; target_price: number | null; status: string | null; sku: string | null; sourcing_href: string } & GoodsInfo;
 type Product = { id: string; name: string; sku: string | null; status: string; unit_price: number };
 
 export function DealLines({
@@ -41,22 +43,23 @@ export function DealLines({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-ink-2">
-                <th className="w-12 px-4 py-2 text-right font-medium">Sr. No.</th>
-                <th className="px-3 py-2 font-medium">Product</th><th className="px-3 py-2 text-right font-medium">Qty</th>
-                <th className="px-3 py-2 text-right font-medium">Target price</th><th className="px-3 py-2 text-right font-medium">Line value</th><th className="px-3 py-2" />
+                <th className="w-12 px-4 py-2 text-right font-medium">Sl No.</th>
+                <th className="px-3 py-2 font-medium">Description of Goods</th><th className="px-3 py-2 text-right font-medium">Quantity</th>
+                <th className="px-3 py-2 text-right font-medium">Target rate</th><th className="px-3 py-2 font-medium">per</th><th className="px-3 py-2 text-right font-medium">Amount</th><th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
               {lines.map((l, n) => (
-                <tr key={l.id} className="border-b border-line">
+                <tr key={l.id} className="border-b border-line align-top">
                   <td className="px-4 py-2 text-right tabular-nums text-ink-3">{n + 1}</td>
                   <td className="px-3 py-2">
                     {l.product_id ? <Link href={`/catalogue/${l.product_id}`} className="font-medium hover:underline">{l.description}</Link> : <span className="font-medium">{l.description}</span>}
-                    <span className="ml-2 text-xs text-ink-3">{l.sku}</span>
                     {l.status && l.status !== "Active" && <span className="ml-2"><Badge>{l.status}</Badge></span>}
+                    {l.product_id && <GoodsDescription title="" goods={l} className="text-ink-2" />}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{l.quantity}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(l.target_price)}</td>
+                  <td className="px-3 py-2">{unitOf(l.product_id ? l : null)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(l.target_price == null ? null : l.target_price * l.quantity)}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <Link href={l.sourcing_href} className="text-xs text-accent hover:underline">Ask a supplier</Link>
