@@ -1,4 +1,4 @@
-import { requirePerm } from "@/lib/auth/dal";
+import { requireSuperAdmin } from "@/lib/auth/dal";
 import { backupCopyDir, backupDir, getBackupSettings, KIND_LABEL, lastAutoError, listBackups } from "@/lib/backup";
 import { backupNow, removeBackup, restoreFromList, saveBackupSchedule } from "@/lib/actions/backup";
 import { dateTime } from "@/lib/format";
@@ -12,7 +12,7 @@ const size = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}
 const TONE = { manual: "blue", auto: "green", "before-restore": "amber", uploaded: "gray" } as const;
 
 export default async function BackupPage({ searchParams }: { searchParams: Promise<SP> }) {
-  await requirePerm("admin");
+  await requireSuperAdmin();
   const sp = await searchParams;
   const ok = str(sp, "ok"), err = str(sp, "err");
   const backups = listBackups();

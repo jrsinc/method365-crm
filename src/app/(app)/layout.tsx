@@ -19,6 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     forms: can(user, "forms.manage"),
     admin: can(user, "admin"),
     products: can(user, "products.manage"),
+    superAdmin: user.role === "SUPER_ADMIN",
   };
   const notices = all<{ id: number; title: string; href: string | null; read: number; created_at: string }>(
     "SELECT id, title, href, read, created_at FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 15", user.id);

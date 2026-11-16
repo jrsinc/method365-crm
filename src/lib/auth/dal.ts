@@ -32,6 +32,13 @@ export function can(user: SessionUser, perm: Permission) {
   return roleHas(user.role, perm);
 }
 
+/** Only Super Admins (e.g. Backup & restore, which can replace all data). */
+export async function requireSuperAdmin(): Promise<SessionUser> {
+  const u = await requireUser();
+  if (u.role !== "SUPER_ADMIN") redirect("/forbidden");
+  return u;
+}
+
 export async function requirePerm(perm: Permission): Promise<SessionUser> {
   const u = await requireUser();
   if (!can(u, perm)) redirect("/forbidden");

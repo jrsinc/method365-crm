@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { cx } from "./ui";
 import { Icon } from "./icons";
 
-type Perms = { reports: boolean; bulk: boolean; forms: boolean; admin: boolean; products: boolean };
+type Perms = { reports: boolean; bulk: boolean; forms: boolean; admin: boolean; products: boolean; superAdmin: boolean };
 type Item = { href: string; label: string; icon: string; show?: boolean; match?: string[]; badge?: number };
 
 export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendingReviews = 0, company }: {
@@ -85,7 +85,7 @@ export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendin
         { href: "/documents", label: "Documents", icon: "file" },
         { href: "/import", label: "Import", icon: "upload", show: perms.bulk },
         { href: "/migration", label: "Migration", icon: "database", show: perms.admin },
-        { href: "/backup", label: "Backup & restore", icon: "database", show: perms.admin },
+        { href: "/backup", label: "Backup & restore", icon: "database", show: perms.superAdmin },
         { href: "/audit-logs", label: "Audit Logs", icon: "shield", show: perms.admin },
         { href: "/settings", label: "Settings", icon: "gear", match: ["/settings", "/admin", "/profile", "/forms"] },
       ],

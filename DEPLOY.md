@@ -127,7 +127,7 @@ Port 3001 stays private; only nginx (80/443) is open to the internet. You no lon
 
 The whole CRM is the `data/` folder plus `.env.local`.
 
-**Built in:** Admin → **Backup & restore** (Super Admins). It can:
+**Built in:** Admin → **Backup & restore** (Super Admins only; hidden from everyone else). It can:
 
 - make a backup now;
 - make a daily automatic backup, deleting old ones after a set number of days (30 by default);

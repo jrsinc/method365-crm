@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { currentUser, can } from "@/lib/auth/dal";
+import { currentUser } from "@/lib/auth/dal";
 import { confirmEdit } from "@/lib/auth/reauth";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import { restoreBackup, saveUpload } from "@/lib/backup";
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   if (origin && host && new URL(origin).host !== host) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const user = await currentUser();
   if (!user) return back("/login");
-  if (!can(user, "admin")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (user.role !== "SUPER_ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const fd = await req.formData();
   if (!(await confirmEdit(user, fd.get("$confirm_password"), "backup", "upload"))) return fail("That password isn't right. Nothing was changed.");
