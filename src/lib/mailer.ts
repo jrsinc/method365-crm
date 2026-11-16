@@ -11,16 +11,34 @@ import nodemailer from "nodemailer";
  *     *Application* permission "Mail.Send" with admin consent.
  * With neither set up, mail is only printed to the server console.
  */
-const cfg = () => ({
-  clientId: process.env.MS_CLIENT_ID ?? "",
-  clientSecret: process.env.MS_CLIENT_SECRET ?? "",
-  tenant: process.env.MS_TENANT_ID ?? "",
-  sender: (process.env.MAIL_SENDER ?? "").trim(),
-  smtpHost: (process.env.SMTP_HOST ?? "").trim() || "smtp.office365.com",
-  smtpPort: Number(process.env.SMTP_PORT) || 587,
-  smtpUser: (process.env.SMTP_USER ?? "").trim() || (process.env.MAIL_SENDER ?? "").trim(),
-  smtpPass: process.env.SMTP_PASS ?? "",
-});
+const env = (k: string) => (process.env[k] ?? "").trim();
+const cfg = () => {
+  const sender = env("MAIL_FROM") || env("MAIL_SENDER");
+  const smtpPort = Number(env("SMTP_PORT")) || 587;
+  const secure = env("SMTP_SECURE").toLowerCase();
+  return {
+    clientId: env("MS_CLIENT_ID"),
+    clientSecret: env("MS_CLIENT_SECRET"),
+    tenant: env("MS_TENANT_ID"),
+    /** Address the mail comes from (MAIL_FROM, or the older MAIL_SENDER). */
+    sender,
+    smtpHost: env("SMTP_HOST") || "smtp.office365.com",
+    smtpPort,
+    /** SSL from the start (port 465) vs STARTTLS (587). SMTP_SECURE=true/false overrides the guess from the port. */
+    smtpSecure: secure ? ["1", "true", "yes", "ssl"].includes(secure) : smtpPort === 465,
+    smtpUser: env("SMTP_USER") || sender,
+    smtpPass: process.env.SMTP_PASS ?? "",
+    /** Where replies go (SUPPORT_EMAIL), e.g. a monitored inbox. */
+    replyTo: env("SUPPORT_EMAIL") || null,
+  };
+};
+
+/** Mailbox for CRM notices and the Security page's test email (NOTIFY_EMAIL, else the sender). */
+export const notifyEmail = () => env("NOTIFY_EMAIL") || cfg().sender;
+/** Help contact shown in emails (SUPPORT_EMAIL). */
+export const supportEmail = () => env("SUPPORT_EMAIL") || null;
+export const senderAddress = () => cfg().sender;
+export const smtpServer = () => { const c = cfg(); return `${c.smtpHost}:${c.smtpPort} (${c.smtpSecure ? "SSL" : "STARTTLS"})`; };
 
 /** SMTP with the mailbox password is set up. */
 const smtpConfigured = () => { const c = cfg(); return !!(c.sender && c.smtpUser && c.smtpPass); };
@@ -35,7 +53,10 @@ export const mailMethod = () => (smtpConfigured() ? "smtp" : graphConfigured() ?
 function smtp() {
   const c = cfg();
   return nodemailer.createTransport({
-    host: c.smtpHost, port: c.smtpPort, secure: c.smtpPort === 465, requireTLS: c.smtpPort !== 465,
+    host: c.smtpHost, port: c.smtpPort, secure: c.smtpSecure, requireTLS: !c.smtpSecure,
+    // Greet the server with a real domain, not the PC's Windows name (e.g. "DIVYAGADHIYARMT"): hosting mail
+    // filters accept mail from a bare machine name and then silently drop it. SMTP_HELO overrides.
+    name: env("SMTP_HELO") || c.sender.split("@")[1] || undefined,
     auth: { user: c.smtpUser, pass: c.smtpPass },
     connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000,
   });
@@ -85,7 +106,7 @@ export async function mailReady(): Promise<{ ok: boolean; why?: string }> {
     }
     return { ok: g.__smtpOk.ok, why: g.__smtpOk.why };
   }
-  if (!graphConfigured()) return { ok: false, why: "No sender set up: add MAIL_SENDER and SMTP_PASS (the mailbox password) to .env.local." };
+  if (!graphConfigured()) return { ok: false, why: "No sender set up: add MAIL_FROM and SMTP_PASS (the mailbox password) to .env.local." };
   try {
     const t = await appToken();
     const roles = (JSON.parse(Buffer.from(t.split(".")[1], "base64url").toString()).roles ?? []) as string[];
@@ -99,17 +120,38 @@ export async function mailReady(): Promise<{ ok: boolean; why?: string }> {
   }
 }
 
-/** Send a plain-text email. Resolves to whether it was really sent (false = printed to the console only). Throws if sending fails. */
+const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
+/** A simple HTML twin of the text (mail filters trust multipart text+HTML more than bare text). */
+const htmlOf = (text: string) =>
+  `<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#18181a;line-height:1.5">${
+    text.split(/\n{2,}/).map((p) => `<p style="margin:0 0 12px">${esc(p).replace(/\n/g, "<br>")}</p>`).join("")}</body></html>`;
+
+export type SendResult = { sent: boolean; reply?: string; id?: string };
+
+/** Send an email (text + HTML). Resolves to whether it was really sent (false = printed to the console only). Throws if sending fails. */
 export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {
+  return (await sendMailDetailed(to, subject, text)).sent;
+}
+
+/** Like sendMail, but also returns the mail server's reply (shown by the Security page's test). */
+export async function sendMailDetailed(to: string, subject: string, text: string): Promise<SendResult> {
   const c = cfg();
   if (smtpConfigured()) {
     const t = smtp();
     try {
-      const info = await t.sendMail({ from: { name: process.env.MAIL_FROM_NAME || "method365 CRM", address: c.sender }, to, subject, text });
+      const support = supportEmail();
+      const body = support && !text.includes(support) ? `${text}\n\nQuestions? Contact ${support}.` : text;
+      const info = await t.sendMail({
+        from: { name: env("MAIL_FROM_NAME") || "method365 CRM", address: c.sender },
+        to, subject, text: body, html: htmlOf(body),
+        replyTo: c.replyTo ?? undefined,
+        headers: { "X-Auto-Response-Suppress": "OOF, AutoReply" },
+      });
       // The mail server's own reply (e.g. "250 OK id=…") so a missing email can be traced with the host.
-      console.log(`[mail] sent to ${to}: accepted=${info.accepted.length} rejected=${info.rejected.length} id=${info.messageId} reply="${String(info.response).slice(0, 200)}"`);
+      const reply = String(info.response).slice(0, 200);
+      console.log(`[mail] sent to ${to}: accepted=${info.accepted.length} rejected=${info.rejected.length} id=${info.messageId} reply="${reply}"`);
       if (!info.accepted.length) throw new Error(`the mail server refused ${to}`);
-      return true;
+      return { sent: true, reply, id: info.messageId };
     } catch (e) {
       const why = smtpWhy(e);
       g.__smtpOk = { at: Date.now(), ok: false, why };
@@ -121,7 +163,7 @@ export async function sendMail(to: string, subject: string, text: string): Promi
   }
   if (!graphConfigured()) {
     console.log(`\n[mail] to=${to}\n[mail] subject=${subject}\n${text}\n`);
-    return false;
+    return { sent: false };
   }
   const r = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(c.sender)}/sendMail`, {
     method: "POST",
@@ -138,5 +180,5 @@ export async function sendMail(to: string, subject: string, text: string): Promi
       ? "The CRM isn't allowed to send email yet (Mail.Send application permission needs admin consent)."
       : `Email could not be sent (${r.status}).`);
   }
-  return true;
+  return { sent: true, reply: `Microsoft Graph ${r.status}` };
 }

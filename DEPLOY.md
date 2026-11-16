@@ -48,10 +48,12 @@ chmod 600 .env.local
 | `MS_CLIENT_ID`, `MS_TENANT_ID`, `MS_CLIENT_SECRET` | from the Entra ID app registration (Outlook connection) |
 | `MS_REDIRECT_URI` | `https://crm.yourcompany.com/api/outlook/callback`; also add this exact URL in Entra → App registration → Authentication |
 | `OUTLOOK_CALENDAR` | `1` to show Outlook meetings on the CRM calendar |
-| `MAIL_SENDER` / `SMTP_USER` | `crm@method365sign.com` |
-| `SMTP_HOST` / `SMTP_PORT` | `sh00007.webhostbox.net` / `465`, the web host's server name (its certificate isn't for `mail.method365sign.com`) |
-| `SMTP_PASS` | the mailbox password |
+| `MAIL_FROM` / `SMTP_USER` | `crm@method365sign.com` (`MAIL_SENDER` also works) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` | `sh00007.webhostbox.net` / `465` / `true`, the web host's server name (its certificate isn't for `mail.method365sign.com`) |
+| `SMTP_PASS` | the mailbox password (in quotes if it contains `#` or spaces) |
+| `SMTP_HELO` | optional; the name the CRM greets the mail server with. Defaults to the sender's domain (`method365sign.com`). Never leave it as the PC's own name: the host then accepts mail and silently drops it. |
 | `MAIL_FROM_NAME` | `method365 CRM` |
+| `NOTIFY_EMAIL` / `SUPPORT_EMAIL` | `crm@method365sign.com`: the fallback test address, plus reply-to and help contact in emails |
 
 Do **not** set `INSECURE_COOKIES` in production: behind HTTPS the session cookies must stay "Secure".
 

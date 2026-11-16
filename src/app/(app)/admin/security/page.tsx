@@ -1,14 +1,14 @@
 import { requirePerm } from "@/lib/auth/dal";
 import { getSecuritySettings } from "@/lib/settings";
-import { mailReady } from "@/lib/mailer";
-import { saveSecurity } from "@/lib/actions/admin";
+import { mailReady, notifyEmail, senderAddress, smtpServer } from "@/lib/mailer";
+import { saveSecurity, sendTestEmail } from "@/lib/actions/admin";
 import { ActionForm } from "@/components/admin-forms";
 import { Card, Input, Label, PageHeader } from "@/components/ui";
 
 export const metadata = { title: "Security" };
 
 export default async function Security() {
-  await requirePerm("admin");
+  const user = await requirePerm("admin");
   const s = getSecuritySettings();
   const mail = await mailReady();
   const num = (name: string, label: string, value: number, help: string) => (
@@ -28,7 +28,7 @@ export default async function Security() {
             <span><span className="font-medium">Require two-factor sign-in for all users</span><br /><span className="text-xs text-ink-3">Users get a 6-digit code by email after their password.</span></span>
           </label>
           <p className={`text-xs ${mail.ok ? "text-good" : "text-warn"}`}>
-            {mail.ok ? `Sign-in codes are emailed from ${process.env.MAIL_SENDER}.`
+            {mail.ok ? `Sign-in codes are emailed from ${senderAddress()} via ${smtpServer()}.`
               : `Email sending isn't ready, so this can't be turned on yet: ${mail.why}`}
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -37,6 +37,15 @@ export default async function Security() {
             {num("lockout_minutes", "Lockout duration (minutes)", s.lockout_minutes, "Admins can unlock a user early.")}
             {num("password_min_length", "Minimum password length", s.password_min_length, "8 or more.")}
             {num("otp_minutes", "Sign-in code validity (minutes)", s.otp_minutes, "For two-factor codes.")}
+          </div>
+        </ActionForm>
+      </Card>
+      <Card title="Test email" className="mt-5">
+        <ActionForm action={sendTestEmail} submitLabel="Send test email" reason="Enter your password to send a test email.">
+          <p className="text-sm text-ink-2">Sends one short email from {senderAddress() || "the CRM mailbox"} and shows the mail server&apos;s reply.</p>
+          <div className="max-w-md">
+            <Label htmlFor="to">Send to</Label>
+            <Input id="to" name="to" type="email" defaultValue={user.email || notifyEmail()} />
           </div>
         </ActionForm>
       </Card>

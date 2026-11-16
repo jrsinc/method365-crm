@@ -9,7 +9,8 @@ import { hashPassword, randomToken } from "../auth/crypto";
 import { passwordProblem } from "../auth/policy";
 import { revokeUserSessions } from "../auth/session";
 import { getSecuritySettings, saveSecuritySettings, SECURITY_DEFAULTS, type SecuritySettings } from "../settings";
-import { mailReady } from "../mailer";
+import { mailReady, sendMailDetailed } from "../mailer";
+import { APP_NAME } from "../config";
 import { audit } from "../audit";
 import { confirmEdit } from "../auth/reauth";
 import { managerChain } from "../reviews";
@@ -148,6 +149,26 @@ export async function saveSecurity(_: AdminState, fd: FormData): Promise<AdminSt
   await audit(admin, "settings.security", null, null, s);
   revalidatePath("/admin/security");
   return { ok: "Security settings saved." };
+}
+
+/** Security page: send one test email so an admin can check delivery (shows the mail server's reply). */
+export async function sendTestEmail(_: AdminState, fd: FormData): Promise<AdminState> {
+  const admin = await requirePerm("admin");
+  if (!(await pwOk(admin, fd, "settings", "mail-test"))) return { error: WRONG };
+  const to = String(fd.get("to") ?? "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { error: "Enter a valid email address." };
+  try {
+    const r = await sendMailDetailed(
+      to,
+      `${APP_NAME} test email`,
+      `Hi,\n\nThis is a test email from ${APP_NAME}, sent by ${admin.name} from Settings → Security.\nIf you can read this, sign-in codes and notices will reach this inbox.`,
+    );
+    await audit(admin, "settings.mail_test", null, null, { to, reply: r.reply });
+    if (!r.sent) return { error: "Email sending isn't set up, so the message was only written to the server log." };
+    return { ok: `Sent to ${to}. Mail server reply: ${r.reply ?? "OK"}. If it doesn't arrive within a few minutes, check Junk and the Microsoft 365 quarantine.` };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Email could not be sent." };
+  }
 }
 
 export async function saveNumbering(_: AdminState, fd: FormData): Promise<AdminState> {
