@@ -2,6 +2,7 @@ import "server-only";
 import { all, get, newId, run } from "./db";
 import { reviewersFor } from "./reviews";
 import type { SessionUser } from "./auth/session";
+import { notify } from "./notify";
 
 /**
  * Discount approval. A quote discount above the limit (Settings → Configuration, default 0%, so any
@@ -66,7 +67,7 @@ export function syncDiscountApproval(user: SessionUser, quoteId: string, opts: {
        VALUES (?, ?, 'Pending', 'quotes', ?, ?, 'Sales Manager', 0, 1, date('now','+2 days'))`, id, policy, quoteId, user.id);
   run("UPDATE quotes SET discount_status = 'Pending', discount_approval_id = ?, discount_requested_by = ? WHERE id = ?", id, user.id, quoteId);
   for (const r of reviewers) {
-    run("INSERT INTO notifications (user_id, title, href) VALUES (?, ?, ?)", r, `Discount approval needed: ${policy} (${user.name})`.slice(0, 200), `/quotes/${quoteId}`);
+    notify(r, `Discount approval needed: ${policy} (${user.name})`, `/quotes/${quoteId}`, { heading: "A discount needs your approval" });
   }
 }
 

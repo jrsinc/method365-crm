@@ -40,6 +40,7 @@ chmod 600 .env.local
 
 | Setting | Production value |
 |---|---|
+| `APP_URL` | `https://crm.yourcompany.com`, used for the "Open in CRM" button in notification emails |
 | `NEXT_PUBLIC_APP_NAME` | `method365 CRM` (or your name for it) |
 | `NEXT_PUBLIC_ENV_LABEL` | **leave empty**, which removes the orange "Demo environment" banner |
 | `DATABASE_PATH` | `/opt/method365-crm/data/crm.db` |

@@ -15,6 +15,7 @@ import { canQuickAdd } from "../page-helpers";
 import { addOption, allOptions, extendable } from "../picklists";
 import { logChange } from "../reviews";
 import { syncDiscountApproval } from "../discounts";
+import { notify } from "../notify";
 
 /** Lets the password dialog tell the user straight away if they mistyped. The edit itself re-checks. */
 export async function verifyMyPassword(pw: string): Promise<boolean> {
@@ -60,7 +61,7 @@ async function resolveQuickAdds(def: ResourceDef, user: SessionUser, fd: FormDat
     await audit(user, "create", target.key, r.id, { via: `${def.key}.${f.name}` });
     if (f.ref === "catalogue" && !can(user, "products.manage")) {
       for (const u of all<{ id: string }>("SELECT id FROM users WHERE role IN ('SALES_MANAGER','SUPER_ADMIN') AND active = 1"))
-        run("INSERT INTO notifications (user_id, title, href) VALUES (?, ?, ?)", u.id, `New product awaiting approval: ${name}`, `/catalogue/${r.id}`);
+        notify(u.id, `New product awaiting approval: ${name}`, `/catalogue/${r.id}`, { heading: "A new product needs approval" });
     }
     data[f.name] = r.id;
     fd.set(f.name, r.id);

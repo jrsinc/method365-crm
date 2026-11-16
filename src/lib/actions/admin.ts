@@ -162,6 +162,7 @@ export async function sendTestEmail(_: AdminState, fd: FormData): Promise<AdminS
       to,
       `${APP_NAME} test email`,
       `Hi,\n\nThis is a test email from ${APP_NAME}, sent by ${admin.name} from Settings → Security.\nIf you can read this, sign-in codes and notices will reach this inbox.`,
+      { heading: "Your CRM email is working" },
     );
     await audit(admin, "settings.mail_test", null, null, { to, reply: r.reply });
     if (!r.sent) return { error: "Email sending isn't set up, so the message was only written to the server log." };

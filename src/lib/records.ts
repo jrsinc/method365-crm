@@ -10,6 +10,7 @@ import { isCustomOption } from "./picklists";
 import { accountAddress } from "./addresses";
 import { countryName } from "./geo";
 import { DISCOUNT_GATED, discountBlockMessage, discountNeedsApproval } from "./discounts";
+import { notify } from "./notify";
 
 export const PAGE_SIZE = 25;
 
@@ -402,7 +403,7 @@ export function insertRecord(
     // Super Admins need no sign-off for large opportunities.
     if (def.key === "opportunities" && user.role !== "SUPER_ADMIN") raiseApprovalIfNeeded(id, user.id, data);
     if (def.key === "tasks" && data.owner_id && data.owner_id !== user.id) {
-      run("INSERT INTO notifications (user_id, title, href) VALUES (?, ?, ?)", String(data.owner_id), `${user.name} assigned you a task: ${String(data.title ?? "")}`.slice(0, 200), `/tasks/${id}`);
+      notify(String(data.owner_id), `${user.name} assigned you a task: ${String(data.title ?? "")}`, `/tasks/${id}`, { heading: "New task for you" });
     }
     return { ok: true as const, id };
   });
@@ -429,7 +430,7 @@ function raiseApprovalIfNeeded(dealId: string, userId: string, data: Record<stri
     newId(), `Opportunity above ${threshold.toLocaleString("en-US")}`, dealId, userId,
   );
   for (const u of all<{ id: string }>("SELECT id FROM users WHERE role IN ('SALES_MANAGER','SUPER_ADMIN') AND active = 1"))
-    run("INSERT INTO notifications (user_id, title, href) VALUES (?, ?, '/approvals')", u.id, `Approval needed: ${String(data.name ?? "opportunity")}`);
+    notify(u.id, `Approval needed: ${String(data.name ?? "opportunity")}`, "/approvals", { heading: "An opportunity needs your approval" });
 }
 
 export function updateRecord(
@@ -442,7 +443,7 @@ export function updateRecord(
   const errors: FieldErrors = {};
   if (def.ownerField && def.ownerField in data && !can(user, "records.assign") && def.key !== "tasks") delete data[def.ownerField];
   if (def.key === "tasks" && data.owner_id && data.owner_id !== before.owner_id && data.owner_id !== user.id) {
-    run("INSERT INTO notifications (user_id, title, href) VALUES (?, ?, ?)", String(data.owner_id), `${user.name} assigned you a task: ${String(data.title ?? before.title ?? "")}`.slice(0, 200), `/tasks/${before.id}`);
+    notify(String(data.owner_id), `${user.name} assigned you a task: ${String(data.title ?? before.title ?? "")}`, `/tasks/${before.id}`, { heading: "New task for you" });
   }
   if (def.ownerField && def.ownerField in data && !data[def.ownerField]) data[def.ownerField] = before[def.ownerField] as string;
   checkRefs(def, user, data, errors);

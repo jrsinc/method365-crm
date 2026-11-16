@@ -1,6 +1,6 @@
 import "server-only";
 import { all, get, newId, run } from "./db";
-import { sendMail } from "./mailer";
+import { notify } from "./notify";
 import { fieldText } from "./format";
 import { baseCurrency } from "./settings";
 import type { ResourceDef } from "./resources";
@@ -74,13 +74,9 @@ export async function logChange(user: SessionUser, def: ResourceDef, before: Row
     id, def.key, String(before.id), title, user.id, JSON.stringify(changes));
   const labels = Object.values(changes).map((c) => c.label).join(", ");
   const msg = `${user.name} edited ${def.singular.toLowerCase()} ${title}: ${labels}${how !== "edit" ? ` (${how})` : ""}`;
+  const lines = Object.values(changes).map((c) => `• ${c.label}: ${c.beforeText} → ${c.afterText}`).join("\n");
   for (const rid of reviewersFor(user, def.key)) {
-    run("INSERT INTO notifications (user_id, title, href) VALUES (?, ?, ?)", rid, `${msg}. Review or revoke.`, `/change-reviews?id=${id}`);
-    const email = get<{ email: string }>("SELECT email FROM users WHERE id = ?", rid)?.email;
-    if (email) {
-      const lines = Object.values(changes).map((c) => `- ${c.label}: ${c.beforeText} → ${c.afterText}`).join("\n");
-      await sendMail(email, `Edit to review: ${def.singular} ${title}`, `${msg}\n\n${lines}\n\nAccept or revoke it: /change-reviews?id=${id}`).catch(() => {});
-    }
+    notify(rid, `${msg}. Review or revoke.`, `/change-reviews?id=${id}`, { heading: "An edit needs your review", details: lines });
   }
   return id;
 }

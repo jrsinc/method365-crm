@@ -1,5 +1,6 @@
 import "server-only";
 import nodemailer from "nodemailer";
+import { logoAttachment, noticeEmail, type EmailContent } from "./email-templates";
 
 /**
  * Outgoing mail (sign-in codes, review notices), sent from the mailbox in MAIL_SENDER.
@@ -120,30 +121,33 @@ export async function mailReady(): Promise<{ ok: boolean; why?: string }> {
   }
 }
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
-/** A simple HTML twin of the text (mail filters trust multipart text+HTML more than bare text). */
-const htmlOf = (text: string) =>
-  `<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#18181a;line-height:1.5">${
-    text.split(/\n{2,}/).map((p) => `<p style="margin:0 0 12px">${esc(p).replace(/\n/g, "<br>")}</p>`).join("")}</body></html>`;
-
 export type SendResult = { sent: boolean; reply?: string; id?: string };
 
-/** Send an email (text + HTML). Resolves to whether it was really sent (false = printed to the console only). Throws if sending fails. */
-export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {
-  return (await sendMailDetailed(to, subject, text)).sent;
+/**
+ * What to send: plain `text` (wrapped in the branded layout automatically, with an optional heading),
+ * or a ready-made template (`build`) such as the sign-in code email.
+ */
+export type MailOptions = { heading?: string; button?: { label: string; href: string } | null; build?: (o: { support: string | null; withLogo: boolean }) => EmailContent };
+
+/** Send an email (text + branded HTML). Resolves to whether it was really sent (false = printed to the console only). Throws if sending fails. */
+export async function sendMail(to: string, subject: string, text: string, opts: MailOptions = {}): Promise<boolean> {
+  return (await sendMailDetailed(to, subject, text, opts)).sent;
 }
 
 /** Like sendMail, but also returns the mail server's reply (shown by the Security page's test). */
-export async function sendMailDetailed(to: string, subject: string, text: string): Promise<SendResult> {
+export async function sendMailDetailed(to: string, subject: string, text: string, opts: MailOptions = {}): Promise<SendResult> {
   const c = cfg();
+  const support = supportEmail();
+  const make = (withLogo: boolean) => opts.build?.({ support, withLogo }) ?? noticeEmail({ subject, text, heading: opts.heading, button: opts.button, support, withLogo });
   if (smtpConfigured()) {
     const t = smtp();
     try {
-      const support = supportEmail();
-      const body = support && !text.includes(support) ? `${text}\n\nQuestions? Contact ${support}.` : text;
+      const logo = logoAttachment();
+      const mail = make(!!logo);
       const info = await t.sendMail({
         from: { name: env("MAIL_FROM_NAME") || "method365 CRM", address: c.sender },
-        to, subject, text: body, html: htmlOf(body),
+        to, subject: mail.subject, text: mail.text, html: mail.html,
+        attachments: logo ? [logo] : undefined,
         replyTo: c.replyTo ?? undefined,
         headers: { "X-Auto-Response-Suppress": "OOF, AutoReply" },
       });
@@ -162,14 +166,16 @@ export async function sendMailDetailed(to: string, subject: string, text: string
     }
   }
   if (!graphConfigured()) {
-    console.log(`\n[mail] to=${to}\n[mail] subject=${subject}\n${text}\n`);
+    const mail = make(false);
+    console.log(`\n[mail] to=${to}\n[mail] subject=${mail.subject}\n${mail.text}\n`);
     return { sent: false };
   }
+  const mail = make(false);
   const r = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(c.sender)}/sendMail`, {
     method: "POST",
     headers: { authorization: `Bearer ${await appToken()}`, "content-type": "application/json" },
     body: JSON.stringify({
-      message: { subject, body: { contentType: "Text", content: text }, toRecipients: [{ emailAddress: { address: to } }] },
+      message: { subject: mail.subject, body: { contentType: "HTML", content: mail.html }, toRecipients: [{ emailAddress: { address: to } }] },
       saveToSentItems: false,
     }),
   });

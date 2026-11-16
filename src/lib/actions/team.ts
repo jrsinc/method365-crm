@@ -12,6 +12,7 @@ import { recalcQuote } from "../records";
 import { canReview, getReview, managerChain } from "../reviews";
 import { getRoles, invalidateRoles, MODULES, MODULE_LEVELS, type ModuleLevel } from "../roles";
 import type { Permission } from "../config";
+import { notify } from "../notify";
 
 const go = (path: string, msg: string): never => redirect(`${path}${path.includes("?") ? "&" : "?"}msg=${encodeURIComponent(msg)}`);
 
@@ -60,8 +61,8 @@ export async function decideReview(id: string, decision: "accept" | "revoke", fd
   run("UPDATE change_reviews SET status = ?, reviewer_id = ?, reviewed_at = datetime('now'), note = ? WHERE id = ?",
     decision === "revoke" ? "Revoked" : "Accepted", user.id, note, id);
   if (review.user_id) {
-    run("INSERT INTO notifications (user_id, title, href) VALUES (?, ?, ?)", review.user_id,
-      `${user.name} ${decision === "revoke" ? "revoked" : "accepted"} your edit to ${review.record_title}${note ? `: ${note}` : ""}`, back);
+    notify(review.user_id, `${user.name} ${decision === "revoke" ? "revoked" : "accepted"} your edit to ${review.record_title}${note ? `: ${note}` : ""}`,
+      back, { heading: decision === "revoke" ? "Your edit was revoked" : "Your edit was accepted" });
   }
   await audit(user, decision === "revoke" ? "change.revoke" : "change.accept", review.entity, review.record_id, { review: id, note });
   revalidatePath("/", "layout");

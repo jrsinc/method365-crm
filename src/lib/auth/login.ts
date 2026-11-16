@@ -6,6 +6,7 @@ import { get, run } from "../db";
 import { getSecuritySettings } from "../settings";
 import { audit } from "../audit";
 import { sendMail } from "../mailer";
+import { otpEmail } from "../email-templates";
 import { APP_NAME } from "../config";
 import { DUMMY_HASH, randomOtp, randomToken, sha256, verifyPassword } from "./crypto";
 import { createSession, destroySession, getSessionUser } from "./session";
@@ -68,10 +69,12 @@ async function sendOtp(c: Challenge, user: { email: string; name: string }) {
     c.token_hash,
   );
   try {
+    // Branded template: big code box, expiry, security note (see lib/email-templates.ts).
     await sendMail(
       user.email,
       `${APP_NAME} sign-in code: ${code}`,
       `Hi ${user.name},\n\nYour sign-in code is ${code}. It expires in ${s.otp_minutes} minutes.\nIf you did not try to sign in, change your password.`,
+      { build: (o) => otpEmail({ name: user.name, code, minutes: s.otp_minutes, ...o }) },
     );
     return null;
   } catch (e) {

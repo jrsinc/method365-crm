@@ -10,6 +10,7 @@ import { all, get, newId, run, tx } from "../db";
 import { audit } from "../audit";
 import { confirmEdit } from "../auth/reauth";
 import { PRODUCT_TYPES } from "../config";
+import { notify } from "../notify";
 
 export type LineState = { error?: string; ok?: string };
 
@@ -110,7 +111,7 @@ export async function addNewProductLine(dealId: string, _prev: LineState, fd: Fo
     addLine(dealId, productId, name, qty, price);
     if (!manager) {
       for (const u of all<{ id: string }>("SELECT id FROM users WHERE role IN ('SALES_MANAGER','SUPER_ADMIN') AND active = 1"))
-        run("INSERT INTO notifications (user_id, title, href) VALUES (?, ?, ?)", u.id, `New product awaiting approval: ${name}`, `/catalogue/${productId}`);
+        notify(u.id, `New product awaiting approval: ${name}`, `/catalogue/${productId}`, { heading: "A new product needs approval" });
     }
   });
   await audit(ctx.user, "create", "catalogue", productId, { from_opportunity: dealId, status });

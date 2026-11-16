@@ -12,6 +12,7 @@ import { sendSalesOrder, type SalesOrderPayload } from "../erp";
 import { discountDeciders, discountNeedsApproval, syncDiscountApproval } from "../discounts";
 import { canReview } from "../reviews";
 import { LINE_GOODS_SQL, type GoodsInfo } from "../goods";
+import { notify } from "../notify";
 
 /** A manager approves or rejects a quote's discount (password confirmed). */
 export async function decideDiscount(quoteId: string, decision: "Approved" | "Rejected", fd: FormData) {
@@ -29,8 +30,8 @@ export async function decideDiscount(quoteId: string, decision: "Approved" | "Re
     run("UPDATE approvals SET status = ?, decided_by = ?, decided_at = datetime('now'), steps_done = 1, comment = ? WHERE id = ?", decision, user.id, comment, q!.discount_approval_id);
     run("UPDATE quotes SET discount_status = ?, discount_approved_pct = ? WHERE id = ?", decision, decision === "Approved" ? pct : null, quoteId);
     for (const to of new Set([q!.discount_requested_by, q!.owner_id].filter((x): x is string => !!x && x !== user.id))) {
-      run("INSERT INTO notifications (user_id, title, href) VALUES (?, ?, ?)", to,
-        `${user.name} ${decision === "Approved" ? "approved" : "rejected"} the ${pct}% discount on quote ${q!.number ?? ""}${comment ? `: ${comment}` : ""}`.slice(0, 200), `/quotes/${quoteId}`);
+      notify(to, `${user.name} ${decision === "Approved" ? "approved" : "rejected"} the ${pct}% discount on quote ${q!.number ?? ""}${comment ? `: ${comment}` : ""}`,
+        `/quotes/${quoteId}`, { heading: decision === "Approved" ? "Discount approved" : "Discount rejected" });
     }
   });
   await audit(user, `discount.${decision.toLowerCase()}`, "quotes", quoteId, { pct, comment });
