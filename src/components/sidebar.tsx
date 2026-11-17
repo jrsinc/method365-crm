@@ -111,10 +111,15 @@ export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendin
               <span className={cx("grid h-8 shrink-0 place-items-center overflow-hidden rounded-md bg-white px-1", collapsed ? "w-8" : "max-w-[120px]")}>
                 <img src={company.logo} alt={`${company.name || "Company"} logo`} className="max-h-7 max-w-full object-contain" />
               </span>
+            ) : collapsed ? (
+              <img src="/brand/method365-mark.png" alt={appName} className="h-8 w-8 shrink-0 rounded-md bg-white p-0.5" />
             ) : (
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-nav-accent text-white"><Icon name="grid" size={15} /></span>
+              // Method365's own logo, on white so it reads on the dark menu.
+              <span className="flex h-9 shrink-0 items-center rounded-md bg-white px-2">
+                <img src="/brand/method365-logo.png" alt={appName} className="h-6 w-auto" />
+              </span>
             )}
-            {!collapsed && (
+            {!collapsed && company?.logo && (
               <span className="min-w-0 leading-tight">
                 <span className="block truncate">{company?.name || appName}</span>
                 {company?.name && <span className="block truncate text-[10px] font-normal text-nav-muted">{appName}</span>}

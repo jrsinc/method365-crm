@@ -5,7 +5,7 @@ import { requireUser, can } from "@/lib/auth/dal";
 import { MS, connection, listFolders, listMessages, mailActionsEnabled, matchSender, outlookConfigured, safeFolder, thread, type FolderNode, type MailFull, type MailSummary } from "@/lib/outlook";
 import { LocalTime, MailActions } from "@/components/mail-tools";
 import { EmailFrame } from "@/components/email-frame";
-import { accountFromEmail, caseFromEmail, contactFromEmail, disconnectOutlook, flagEmail, leadFromEmail, logEmail, pinEmail, respondToEmail, taskFromEmail } from "@/lib/actions/mail";
+import { accountFromEmail, caseFromEmail, contactFromEmail, disconnectOutlook, deleteEmail, flagEmail, leadFromEmail, logEmail, markEmailRead, moveEmail, pinEmail, respondToEmail, taskFromEmail } from "@/lib/actions/mail";
 import { RESOURCES } from "@/lib/resources";
 import { getRecord, refOptions } from "@/lib/records";
 import { relative } from "@/lib/format";
@@ -302,6 +302,10 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
                 <MailActions
                   enabled={mailActionsEnabled(user.id)}
                   returnTo={href({ msg: null })}
+                  listHref={href({ msg: null, m: null })}
+                  isRead={!!sel!.isRead}
+                  folders={folders.map((f) => ({ id: f.id, label: `${"  ".repeat(f.depth)}${f.displayName}` }))}
+                  currentFolderId={current?.id}
                   flagged={sel!.flag?.flagStatus === "flagged"}
                   pinned={!!sel!.pinned}
                   replyTo={sel!.from?.emailAddress.address ?? "the sender"}
@@ -313,6 +317,9 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
                     forward: respondToEmail.bind(null, sel!.id, "forward"),
                     flag: flagEmail.bind(null, sel!.id, sel!.flag?.flagStatus !== "flagged"),
                     pin: pinEmail.bind(null, sel!.id, !sel!.pinned),
+                    read: markEmailRead.bind(null, sel!.id, !sel!.isRead),
+                    move: moveEmail.bind(null, sel!.id),
+                    del: deleteEmail.bind(null, sel!.id),
                   }}
                 />
                 {/* Newest first, like Outlook's reading pane: the selected and latest messages open, earlier ones folded. */}

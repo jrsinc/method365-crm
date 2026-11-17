@@ -22,9 +22,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <p className="text-xs text-ink-3">{APP_NAME}</p>
           </div>
         ) : (
-          <div className="mb-6 flex items-center justify-center gap-2">
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-accent-ink font-bold">{APP_NAME[0]}</span>
-            <span className="text-lg font-semibold">{APP_NAME}</span>
+          <div className="mb-6 text-center">
+            {/* On white so the logo reads in dark mode too. */}
+            <span className="inline-block rounded-xl bg-white px-4 py-3">
+              <img src="/brand/method365-logo.png" alt={APP_NAME} className="mx-auto h-12 w-auto" />
+            </span>
+            <p className="mt-1 text-xs text-ink-3">{APP_NAME}</p>
           </div>
         )}
         {restored && (

@@ -293,6 +293,19 @@ export async function setFlag(userId: string, messageId: string, flagged: boolea
   return graphWrite(userId, "PATCH", `/me/messages/${encodeURIComponent(messageId)}`, { flag: { flagStatus: flagged ? "flagged" : "notFlagged" } });
 }
 
+export async function setRead(userId: string, messageId: string, isRead: boolean) {
+  const r = await graphWrite(userId, "PATCH", `/me/messages/${encodeURIComponent(messageId)}`, { isRead });
+  folderCache.delete(userId); // unread counts changed
+  return r;
+}
+
+/** Move to another folder (a well-known name like "deleteditems", or a folder id). Returns the message's new id. */
+export async function moveMessage(userId: string, messageId: string, destinationId: string) {
+  const r = (await graphWrite(userId, "POST", `/me/messages/${encodeURIComponent(messageId)}/move`, { destinationId })) as { id?: string } | null;
+  folderCache.delete(userId);
+  return r?.id ?? null;
+}
+
 /** Pin / unpin the way Outlook does: unpinning puts the marker back to the message's received time. */
 export async function setPinned(userId: string, messageId: string, pinned: boolean) {
   const m = await graph<{ receivedDateTime: string }>(userId, `/me/messages/${encodeURIComponent(messageId)}?$select=receivedDateTime`);

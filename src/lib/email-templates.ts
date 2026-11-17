@@ -1,4 +1,6 @@
 import "server-only";
+import fs from "node:fs";
+import path from "node:path";
 import { APP_NAME } from "./config";
 import { getBranding, getLogo } from "./branding";
 
@@ -22,19 +24,30 @@ export const esc = (s: string) =>
 export const paragraphs = (text: string) =>
   text.split(/\n{2,}/).map((p) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:${INK}">${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
 
-/** Is there a logo to embed as cid:logo? */
-export const hasLogo = () => !!getBranding().logo_version;
+/** The built-in Method365 logo, used when no company logo has been uploaded. */
+let productLogo: Buffer | null | undefined;
+const builtInLogo = () => {
+  if (productLogo === undefined) {
+    try { productLogo = fs.readFileSync(path.join(process.cwd(), "public", "brand", "method365-logo.png")); } catch { productLogo = null; }
+  }
+  return productLogo;
+};
+
+/** The logo to embed as cid:logo: the company's (Settings → Company & branding), else Method365's. */
 export const logoAttachment = () => {
   const l = getLogo();
-  return l ? { filename: `logo.${l.type.split("/")[1] || "png"}`, content: l.bytes, contentType: l.type, cid: "logo" } : null;
+  if (l) return { filename: `logo.${l.type.split("/")[1] || "png"}`, content: l.bytes, contentType: l.type, cid: "logo" };
+  const p = builtInLogo();
+  return p ? { filename: "method365-logo.png", content: p, contentType: "image/png", cid: "logo" } : null;
 };
+export const hasLogo = () => !!logoAttachment();
 
 /** The shared frame: header with logo / company name, white card, footer with contact details. */
 export function layout(opts: { title: string; preheader: string; body: string; support?: string | null; withLogo?: boolean }) {
   const b = getBranding();
   const company = b.company_name || APP_NAME;
-  const header = opts.withLogo && b.logo_version
-    ? `<img src="cid:logo" alt="${esc(company)}" height="44" style="display:block;height:44px;max-width:220px;border:0">`
+  const header = opts.withLogo
+    ? `<img src="cid:logo" alt="${esc(company)}" height="44" style="display:block;height:44px;max-width:240px;border:0">`
     : `<span style="font-size:20px;font-weight:700;color:${INK};letter-spacing:-0.2px">${esc(company)}</span>`;
   const contact = [b.company_phone, b.company_email || opts.support, b.company_website].filter(Boolean).map((x) => esc(String(x))).join(" &middot; ");
   return `<!doctype html>

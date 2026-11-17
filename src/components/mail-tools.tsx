@@ -29,13 +29,18 @@ type Mode = "reply" | "replyAll" | "forward";
  * Reply / Reply all / Forward, plus Flag and Pin, for the open message.
  * Sending goes through the user's own mailbox; Outlook adds the original message underneath.
  */
-export function MailActions({ enabled, returnTo, flagged, pinned, replyTo, replyAllTo, actions }: {
+export function MailActions({ enabled, returnTo, listHref, flagged, pinned, isRead, folders, currentFolderId, replyTo, replyAllTo, actions }: {
   enabled: boolean; returnTo: string; flagged: boolean; pinned: boolean;
+  /** The folder's list, for after a move or delete. */
+  listHref: string; isRead: boolean;
+  /** Folders the email can be moved to. */
+  folders: { id: string; label: string }[]; currentFolderId?: string;
   /** Who a reply / reply all goes to (shown so the user knows). */
   replyTo: string; replyAllTo: string;
   actions: {
     reply: (fd: FormData) => Promise<void>; replyAll: (fd: FormData) => Promise<void>; forward: (fd: FormData) => Promise<void>;
     flag: (fd: FormData) => Promise<void>; pin: (fd: FormData) => Promise<void>;
+    read: (fd: FormData) => Promise<void>; move: (fd: FormData) => Promise<void>; del: (fd: FormData) => Promise<void>;
   };
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
@@ -65,11 +70,32 @@ export function MailActions({ enabled, returnTo, flagged, pinned, replyTo, reply
           <Button type="submit" size="sm" variant="ghost" disabled={off} title={tip ?? (pinned ? "Unpin" : "Pin")} aria-pressed={pinned}
             className={cx(pinned && "text-accent")}><Icon name="pin" size={14} />{pinned ? "Pinned" : "Pin"}</Button>
         </form>
+        <form action={actions.read}>
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <Button type="submit" size="sm" variant="ghost" disabled={off} title={tip}>
+            <Icon name="mail" size={14} />{isRead ? "Mark unread" : "Mark read"}</Button>
+        </form>
+        <form action={actions.move} className="flex items-center gap-1">
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <input type="hidden" name="listHref" value={listHref} />
+          <select name="folder" required defaultValue="" disabled={off} aria-label="Move to folder" title={tip}
+            className="h-8 max-w-[11rem] rounded-md border border-line bg-surface px-2 text-sm disabled:opacity-50">
+            <option value="" disabled>Move to…</option>
+            {folders.filter((f) => f.id !== currentFolderId).map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+          </select>
+          <Button type="submit" size="sm" variant="ghost" disabled={off} title={tip}><Icon name="folder" size={14} />Move</Button>
+        </form>
+        <form action={actions.del} onSubmit={(e) => { if (!confirm("Delete this email? It goes to Deleted Items in Outlook, where you can still recover it.")) e.preventDefault(); }}>
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <input type="hidden" name="listHref" value={listHref} />
+          <Button type="submit" size="sm" variant="ghost" disabled={off} title={tip ?? "Move to Deleted Items"} className="text-danger">
+            <Icon name="trash" size={14} />Delete</Button>
+        </form>
       </div>
       {off && (
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-surface-2 px-3 py-2 text-xs text-ink-2">
           <span className="min-w-0 flex-1">
-            To reply, forward, flag or pin from here, allow the CRM to send and update your mail (Mail.Send, Mail.ReadWrite).
+            To reply, forward, flag, pin, move, delete or mark read from here, allow the CRM to send and update your mail (Mail.Send, Mail.ReadWrite).
             If Microsoft asks for admin approval, your admin must approve these first; your mail keeps working either way.
           </span>
           <a href="/api/outlook/connect?add=send" className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 font-medium text-accent-ink hover:opacity-90">

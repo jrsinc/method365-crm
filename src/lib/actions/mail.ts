@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser, can } from "../auth/dal";
 import { RESOURCES, RELATABLE, type ResourceKey } from "../resources";
 import { getRecord, insertRecord } from "../records";
-import { calendarEvent, connection, disconnect, mailActionsEnabled, matchSender, message, messageHtml, respond, setFlag, setPinned, type MailFull } from "../outlook";
+import { calendarEvent, connection, disconnect, mailActionsEnabled, matchSender, listFolders, message, messageHtml, moveMessage, respond, safeFolder, setFlag, setPinned, setRead, type MailFull } from "../outlook";
 import { audit } from "../audit";
 import { get, run } from "../db";
 
@@ -233,6 +233,38 @@ export async function pinEmail(messageId: string, pinned: boolean, fd: FormData)
   const user = await requireUser();
   try { await setPinned(user.id, messageId, pinned); } catch (e) { backTo(fd, messageId, `Couldn't change the pin: ${(e as Error).message}`); }
   backTo(fd, messageId, pinned ? "Pinned to the top of the folder." : "Unpinned.");
+}
+
+export async function markEmailRead(messageId: string, isRead: boolean, fd: FormData) {
+  const user = await requireUser();
+  try { await setRead(user.id, messageId, isRead); } catch (e) { backTo(fd, messageId, `Couldn't change it: ${(e as Error).message}`); }
+  backTo(fd, messageId, isRead ? "Marked as read." : "Marked as unread.");
+}
+
+/** After a move or delete the message isn't in this folder any more: go back to the folder's list. */
+function backToList(fd: FormData, msg: string): never {
+  const r = String(fd.get("listHref") ?? "");
+  const base = r.startsWith("/outlook") && !r.startsWith("//") ? r : "/outlook";
+  redirect(`${base}${base.includes("?") ? "&" : "?"}msg=${encodeURIComponent(msg)}`);
+}
+
+export async function moveEmail(messageId: string, fd: FormData) {
+  const user = await requireUser();
+  const dest = safeFolder(String(fd.get("folder") ?? ""));
+  const folders = await listFolders(user.id).catch(() => []);
+  const target = folders.find((f) => f.id === dest || f.wellKnown === dest);
+  if (!target) backTo(fd, messageId, "Choose a folder to move the email to.");
+  try { await moveMessage(user.id, messageId, target!.id); } catch (e) { backTo(fd, messageId, `Couldn't move it: ${(e as Error).message}`); }
+  await audit(user, "outlook.move", "mailbox", user.id, { to: target!.displayName });
+  backToList(fd, `Moved to ${target!.displayName}.`);
+}
+
+/** Delete works like Outlook's Delete key: the email goes to Deleted Items, where it can still be recovered. */
+export async function deleteEmail(messageId: string, fd: FormData) {
+  const user = await requireUser();
+  try { await moveMessage(user.id, messageId, "deleteditems"); } catch (e) { backTo(fd, messageId, `Couldn't delete it: ${(e as Error).message}`); }
+  await audit(user, "outlook.delete", "mailbox", user.id);
+  backToList(fd, "Moved to Deleted Items.");
 }
 
 export async function disconnectOutlook() {

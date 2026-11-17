@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requirePerm, requireUser } from "../auth/dal";
+import { requirePerm, requireSuperAdmin, requireUser } from "../auth/dal";
 import { confirmEdit } from "../auth/reauth";
 import { revokeUserSessions, type SessionUser } from "../auth/session";
 import { all, get, run, tx } from "../db";
@@ -71,11 +71,14 @@ export async function decideReview(id: string, decision: "accept" | "revoke", fd
 
 /* ---------------- organogram ---------------- */
 
+/** Only Super Admins change reporting lines (from the edit table or a person's panel on the chart). */
 export async function saveReportingLine(userId: string, fd: FormData) {
-  const admin = await requirePerm("admin");
-  const back = "/organogram?edit=1";
+  const admin = await requireSuperAdmin();
+  const b = String(fd.get("back") ?? "");
+  const back = b.startsWith("/organogram") && !b.startsWith("//") ? b : "/organogram?edit=1";
   await needPassword(admin, fd, "users", userId, back);
-  const u = get<{ name: string }>("SELECT name FROM users WHERE id = ?", userId);
+  const u = get<{ name: string; manager_id: string | null; job_title: string | null; department: string | null }>(
+    "SELECT name, manager_id, job_title, department FROM users WHERE id = ?", userId);
   if (!u) go(back, "User not found.");
   const manager = String(fd.get("manager_id") ?? "") || null;
   if (manager) {
@@ -86,7 +89,11 @@ export async function saveReportingLine(userId: string, fd: FormData) {
   const title = String(fd.get("job_title") ?? "").trim().slice(0, 80) || null;
   const dept = String(fd.get("department") ?? "").trim().slice(0, 80) || null;
   run("UPDATE users SET manager_id = ?, job_title = ?, department = ? WHERE id = ?", manager, title, dept, userId);
-  await audit(admin, "user.reporting_line", "users", userId, { manager, title, dept });
+  const name = (id: string | null) => (id ? get<{ name: string }>("SELECT name FROM users WHERE id = ?", id)?.name ?? id : null);
+  await audit(admin, "user.reporting_line", "users", userId, {
+    manager_from: name(u!.manager_id), manager_to: name(manager),
+    title_from: u!.job_title, title_to: title, department_from: u!.department, department_to: dept,
+  });
   revalidatePath("/organogram");
   go(back, `Saved ${u!.name}'s reporting line.`);
 }
