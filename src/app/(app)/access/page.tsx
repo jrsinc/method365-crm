@@ -12,9 +12,8 @@ export const metadata = { title: "Access roles" };
 const PERMS: [Permission, string, string][] = [
   ["records.read.all", "See every record", "Otherwise only records they own."],
   ["records.write", "Create and edit records", "Every edit still asks for their password and goes to their manager."],
-  ["records.delete", "Delete records", ""],
   ["records.assign", "Assign owners", "Change who owns a record."],
-  ["bulk", "Import, export and bulk changes", ""],
+  ["bulk", "Import and bulk changes", "Exporting data is for administrators only."],
   ["reports", "Reports and analytics", ""],
   ["forms.manage", "Web forms and review queue", ""],
   ["products.manage", "Product master and pricing", "Others can add products only as Pending Approval."],

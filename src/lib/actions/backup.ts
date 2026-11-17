@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { requireSuperAdmin } from "../auth/dal";
 import { confirmEdit } from "../auth/reauth";
 import { audit } from "../audit";
-import { backupPath, createBackup, deleteBackup, isBackupName, restoreBackup, saveBackupSettings } from "../backup";
+import { backupPath, createBackup, restoreBackup, saveBackupSettings } from "../backup";
 
 const go = (msg: string, tone: "ok" | "err" = "ok"): never => redirect(`/backup?${tone}=${encodeURIComponent(msg)}`);
 const WRONG = "That password isn't right. Nothing was changed.";
@@ -32,15 +32,6 @@ export async function restoreFromList(name: string, fd: FormData) {
   await audit(admin, "backup.restore", "backup", name, { safety_backup: safety });
   (await cookies()).delete("m365_session");
   redirect("/login?restored=1");
-}
-
-export async function removeBackup(name: string, fd: FormData) {
-  const admin = await requireSuperAdmin();
-  if (!(await confirmEdit(admin, fd.get("$confirm_password"), "backup", name))) go(WRONG, "err");
-  if (!isBackupName(name) || !deleteBackup(name)) go("That backup no longer exists.", "err");
-  await audit(admin, "backup.delete", "backup", name);
-  revalidatePath("/backup");
-  go(`Deleted ${name}.`);
 }
 
 export async function saveBackupSchedule(fd: FormData) {

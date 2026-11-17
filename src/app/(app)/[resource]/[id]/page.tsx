@@ -3,10 +3,10 @@ import Link from "next/link";
 import { requireModule, can } from "@/lib/auth/dal";
 import { moduleOf } from "@/lib/roles";
 import { getResource, RESOURCES, type ResourceDef } from "@/lib/resources";
-import { canCreate, canDelete, canEdit, getRecord, listRecords, refOptions, scopeSql } from "@/lib/records";
+import { canCreate, canEdit, getRecord, listRecords, refOptions, scopeSql } from "@/lib/records";
 import { money } from "@/lib/format";
 import { linkExistingQuote } from "@/lib/actions/deal-lines";
-import { deleteRecord, quickUpdateForm, saveRecord } from "@/lib/actions/records";
+import { quickUpdateForm, saveRecord } from "@/lib/actions/records";
 import { PasswordForm } from "@/components/password-prompt";
 import { convertLead, createSalesOrder, decideDiscount } from "@/lib/actions/sales";
 import { discountDeciders, discountLimit } from "@/lib/discounts";
@@ -24,6 +24,7 @@ import { Badge, Card, Input, Label, LinkButton, Notice, PageHeader, Select, cx }
 import { Submit } from "@/components/submit";
 import { RecordForm } from "@/components/record-form";
 import { EmailFrame } from "@/components/email-frame";
+import { AuditTrail } from "@/components/audit-trail";
 import { QuoteItems } from "@/components/quote-items";
 import { DealLines } from "@/components/deal-lines";
 import { addDealLine, addNewProductLine, removeDealLine } from "@/lib/actions/deal-lines";
@@ -64,11 +65,6 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
           <>
             {def.key === "quotes" && <LinkButton href={`/print/quotes/${id}`} target="_blank">Print / PDF</LinkButton>}
             {editable && <LinkButton href={`${self}/edit`} variant="primary">Edit</LinkButton>}
-            {canDelete(def, user, row) && (
-              <form action={deleteRecord.bind(null, def.key, id)}>
-                <Submit variant="danger" confirm={`Delete this ${def.singular.toLowerCase()}? This cannot be undone.`}>Delete</Submit>
-              </form>
-            )}
           </>
         }
       />
@@ -117,6 +113,7 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
           ) : null}
 
           {def.related?.map((rel) => <RelatedTable key={rel.resource + rel.fk} parent={def} parentId={id} rel={rel} user={user} />)}
+          <AuditTrail entity={def.key} id={id} />
         </div>
 
         <aside className="space-y-5">

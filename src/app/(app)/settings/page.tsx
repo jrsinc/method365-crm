@@ -23,9 +23,8 @@ export const metadata = { title: "Settings" };
 const PERM_LABELS: Record<Permission, string> = {
   "records.read.all": "See every record",
   "records.write": "Create and edit records",
-  "records.delete": "Delete records",
   "records.assign": "Assign owners",
-  bulk: "Import, export and bulk actions",
+  bulk: "Import and bulk actions",
   reports: "Reports and analytics",
   "forms.manage": "Web forms and review queue",
   "products.manage": "Product master and pricing",

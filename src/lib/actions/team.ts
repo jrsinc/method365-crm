@@ -93,7 +93,7 @@ export async function saveReportingLine(userId: string, fd: FormData) {
 
 /* ---------------- access roles ---------------- */
 
-const PERMS: Permission[] = ["records.read.all", "records.write", "records.delete", "records.assign", "bulk", "reports", "forms.manage", "products.manage", "admin"];
+const PERMS: Permission[] = ["records.read.all", "records.write", "records.assign", "bulk", "reports", "forms.manage", "products.manage", "admin"];
 
 export async function saveRole(key: string | null, fd: FormData) {
   const admin = await requirePerm("admin");

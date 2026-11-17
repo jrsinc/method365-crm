@@ -1,6 +1,6 @@
 import { requireSuperAdmin } from "@/lib/auth/dal";
 import { backupCopyDir, backupDir, getBackupSettings, KIND_LABEL, lastAutoError, listBackups } from "@/lib/backup";
-import { backupNow, removeBackup, restoreFromList, saveBackupSchedule } from "@/lib/actions/backup";
+import { backupNow, restoreFromList, saveBackupSchedule } from "@/lib/actions/backup";
 import { dateTime } from "@/lib/format";
 import { str, type SP } from "@/lib/page-helpers";
 import { Badge, Card, Input, Label, Notice, PageHeader } from "@/components/ui";
@@ -87,9 +87,6 @@ export default async function BackupPage({ searchParams }: { searchParams: Promi
                             confirm={`Restore the backup from ${dateTime(b.created)}?\n\nEverything changed since then will be replaced. The current data is backed up first ("Before restore"), and everyone will be signed out.`}>
                             Restore
                           </Submit>
-                        </form>
-                        <form action={removeBackup.bind(null, b.name)} data-confirm-password="Enter your password to delete this backup.">
-                          <Submit size="sm" variant="ghost" confirm={`Delete the backup ${b.name}? This can't be undone.`}>Delete</Submit>
                         </form>
                       </div>
                     </td>

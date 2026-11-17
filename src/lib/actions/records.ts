@@ -198,11 +198,13 @@ export async function deleteRecord(key: ResourceKey, id: string, fd: FormData) {
   const def = getResource(key);
   if (!def) return;
   const row = getRecord(def, user, id);
-  if (!row || !canDelete(def, user, row)) redirect("/forbidden");
+  if (!row) redirect("/forbidden");
+  if (!canDelete(def, user, row)) {
+    await audit(user, "delete.denied", key, id, { title: row.__title });
+    redirect(`/${key}/${id}?msg=${encodeURIComponent("Records can't be deleted. Change the status instead; the full history is kept.")}`);
+  }
   deleteRecordRow(def, id);
-  await audit(user, "delete", key, id, { title: row.__title });
-  revalidatePath("/", "layout");
-  redirect(safeReturn(fd.get("returnTo")) ?? `/${key}`);
+  void fd;
 }
 
 export async function bulkAction(key: ResourceKey, fd: FormData) {
@@ -215,7 +217,11 @@ export async function bulkAction(key: ResourceKey, fd: FormData) {
   const back = safeReturn(fd.get("returnTo")) ?? `/${key}`;
   if (!ids.length || !op) redirect(back);
   const sep0 = back.includes("?") ? "&" : "?";
-  if (op !== "delete" && !(await confirmEdit(user, fd.get("$confirm_password"), key, null))) {
+  if (op === "delete") {
+    await audit(user, "delete.denied", key, null, { count: ids.length, bulk: true });
+    redirect(`${back}${sep0}msg=${encodeURIComponent("Records can't be deleted. Change the status instead.")}`);
+  }
+  if (!(await confirmEdit(user, fd.get("$confirm_password"), key, null))) {
     redirect(`${back}${sep0}msg=${encodeURIComponent("Nothing changed: that password isn't right.")}`);
   }
 
@@ -225,11 +231,7 @@ export async function bulkAction(key: ResourceKey, fd: FormData) {
 
   tx(() => {
     for (const row of rows) {
-      if (op === "delete") {
-        if (!canDelete(def, user, row)) continue;
-        deleteRecordRow(def, row.id as string);
-        done++;
-      } else if (op === "assign") {
+      if (op === "assign") {
         if (!def.ownerField || !can(user, "records.assign") || !canEdit(def, user, row)) continue;
         run(`UPDATE ${def.table} SET ${def.ownerField} = ?, updated_at = datetime('now') WHERE id = ? AND EXISTS (SELECT 1 FROM users WHERE id = ?)`, value, row.id as string, value);
         done++;

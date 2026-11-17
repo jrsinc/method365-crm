@@ -507,6 +507,20 @@ function migrate(db: DatabaseSync) {
   }
   db.exec(`UPDATE sourcing_requests SET supplier_id = (SELECT s.id FROM suppliers s WHERE lower(s.name) = lower(sourcing_requests.supplier))
            WHERE supplier_id IS NULL`);
+
+  // Audit trail is append-only: the database itself refuses to change or delete entries.
+  // Edit-review rows may only get their decision (status, reviewer, note) filled in.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log
+      BEGIN SELECT RAISE(ABORT, 'The audit trail cannot be changed.'); END;
+    CREATE TRIGGER IF NOT EXISTS audit_log_no_delete BEFORE DELETE ON audit_log
+      BEGIN SELECT RAISE(ABORT, 'The audit trail cannot be deleted.'); END;
+    CREATE TRIGGER IF NOT EXISTS change_reviews_no_delete BEFORE DELETE ON change_reviews
+      BEGIN SELECT RAISE(ABORT, 'The audit trail cannot be deleted.'); END;
+    CREATE TRIGGER IF NOT EXISTS change_reviews_keep_values BEFORE UPDATE OF entity, record_id, changes, created_at ON change_reviews
+      BEGIN SELECT RAISE(ABORT, 'Recorded changes cannot be altered.'); END;
+    CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_change_reviews_record ON change_reviews(entity, record_id);`);
 }
 
 export type Row = Record<string, unknown>;

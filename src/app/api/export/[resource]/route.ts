@@ -8,7 +8,10 @@ import { audit } from "@/lib/audit";
 export async function GET(req: NextRequest, ctx: { params: Promise<{ resource: string }> }) {
   const user = await currentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!can(user, "bulk")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!can(user, "admin")) {
+    await audit(user, "export.denied", (await ctx.params).resource, null);
+    return NextResponse.json({ error: "Only administrators can export data." }, { status: 403 });
+  }
   const def = getResource((await ctx.params).resource);
   if (!def) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

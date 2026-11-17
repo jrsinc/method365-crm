@@ -21,7 +21,8 @@ async function decide(id: string, op: "release" | "discard", fd: FormData) {
     run("UPDATE leads SET held = 0, held_reason = NULL, number = COALESCE(number, ?), owner_id = COALESCE(owner_id, ?), updated_at = datetime('now') WHERE id = ? AND held = 1",
       nextNumber("leads"), owner.owner_id, id);
   } else {
-    run("DELETE FROM leads WHERE id = ? AND held = 1", id);
+    // Not deleted: kept as rejected (held = 2), hidden from every list, for the audit trail.
+    run("UPDATE leads SET held = 2, updated_at = datetime('now') WHERE id = ? AND held = 1", id);
   }
   await audit(user, `webform.${op}`, "leads", id);
   revalidatePath("/", "layout");
@@ -38,7 +39,7 @@ export default async function ReviewQueue() {
       <h1 className="text-xl font-semibold tracking-tight">Web form review</h1>
       <p className="mt-1 text-ink-2">
         Web form submissions that tripped a spam check (hidden field filled in, too many in a short time) wait here instead of becoming leads.
-        The sender isn't told — release the genuine ones and discard the rest.
+        The sender isn't told — release the genuine ones and reject the rest (rejected ones are kept, hidden, for the audit trail).
       </p>
       <Card className="mt-4" pad={false}>
         {rows.length === 0 ? (
@@ -57,7 +58,7 @@ export default async function ReviewQueue() {
                 </div>
                 {r.reason && <Badge tone="amber">{r.reason}</Badge>}
                 <form action={decide.bind(null, r.id, "release")} data-confirm-password="Enter your password to release this submission as a lead."><Button size="sm" variant="primary">Release as lead</Button></form>
-                <form action={decide.bind(null, r.id, "discard")} data-confirm-password="Enter your password to discard this submission."><Button size="sm" variant="danger">Discard</Button></form>
+                <form action={decide.bind(null, r.id, "discard")} data-confirm-password="Enter your password to reject this submission."><Button size="sm" variant="danger">Reject</Button></form>
               </li>
             ))}
           </ul>

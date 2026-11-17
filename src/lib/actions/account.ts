@@ -34,7 +34,8 @@ export async function changePassword(_: Msg, fd: FormData): Promise<Msg> {
 
 export async function setTwoFactor(enabled: boolean) {
   const user = await requireUser();
-  if (!enabled && getSecuritySettings().require_2fa) return;
+  // Only an administrator can turn two-factor sign-in off (Settings → Users).
+  if (!enabled) { await audit(user, "2fa.disable.denied"); return; }
   if (enabled && !(await mailReady()).ok) return; // the code couldn't be emailed yet
 
   run("UPDATE users SET two_factor = ? WHERE id = ?", enabled ? 1 : 0, user.id);

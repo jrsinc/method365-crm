@@ -22,7 +22,6 @@ export const ROLE_LABELS: Record<Role, string> = {
  * Permissions
  *  records.read.all  – see every record (otherwise only records you own)
  *  records.write     – create / edit records (executives: own records only)
- *  records.delete    – delete records
  *  records.assign    – change the owner of records
  *  bulk              – CSV import/export and bulk actions
  *  reports           – reports module
@@ -33,7 +32,6 @@ export const ROLE_LABELS: Record<Role, string> = {
 export type Permission =
   | "records.read.all"
   | "records.write"
-  | "records.delete"
   | "records.assign"
   | "bulk"
   | "reports"
@@ -46,7 +44,6 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[] | "*"> = {
   SALES_MANAGER: [
     "records.read.all",
     "records.write",
-    "records.delete",
     "records.assign",
     "bulk",
     "reports",

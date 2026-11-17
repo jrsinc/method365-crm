@@ -36,10 +36,11 @@ export default async function Profile() {
         <p className="text-ink-2">
           {tfa ? "On. After your password, we email you a 6-digit code." : "Off. Turn it on to require an emailed code after your password."}
           {sec.require_2fa && " Your administrator requires it for everyone."}
+          {tfa && " Only an administrator can turn it off."}
         </p>
-        {!sec.require_2fa && (
-          <form action={setTwoFactor.bind(null, !user.two_factor)} className="mt-3">
-            <Submit variant={user.two_factor ? "secondary" : "primary"}>{user.two_factor ? "Turn off" : "Turn on"}</Submit>
+        {!tfa && (
+          <form action={setTwoFactor.bind(null, true)} className="mt-3">
+            <Submit>Turn on</Submit>
           </form>
         )}
       </Card>

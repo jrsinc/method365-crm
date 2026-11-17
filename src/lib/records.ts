@@ -56,12 +56,12 @@ export function canEdit(def: ResourceDef, user: SessionUser, row: Row) {
   return !def.ownerField || row[def.ownerField] === user.id;
 }
 
-export function canDelete(def: ResourceDef, user: SessionUser, row?: Row) {
-  if (level(def, user) !== "full") return false;
-  if (def.managePerm) return can(user, def.managePerm);
-  if (can(user, "records.delete")) return true;
-  // Executives may delete their own tasks and activities.
-  return !!row && (def.key === "tasks" || def.key === "activities") && row.owner_id === user.id;
+/**
+ * Nobody can delete data, whatever their role: records keep their full history for the audit trail.
+ * Close, deactivate or change the status of a record instead.
+ */
+export function canDelete(_def: ResourceDef, _user: SessionUser, _row?: Row) {
+  return false;
 }
 
 /* ---------- labels for references ---------- */
@@ -467,14 +467,9 @@ export function updateRecord(
   return { ok: true, id: before.id as string };
 }
 
-export function deleteRecordRow(def: ResourceDef, id: string) {
-  tx(() => {
-    if (def.timeline) {
-      run("DELETE FROM activities WHERE related_type = ? AND related_id = ?", def.key, id);
-      run("UPDATE tasks SET related_type = NULL, related_id = NULL WHERE related_type = ? AND related_id = ?", def.key, id);
-    }
-    run(`DELETE FROM ${def.table} WHERE id = ?`, id);
-  });
+/** Deleting records is switched off for everyone (see canDelete). Kept so any old caller fails loudly. */
+export function deleteRecordRow(def: ResourceDef, id: string): never {
+  throw new Error(`Deleting is not allowed (${def.key} ${id}).`);
 }
 
 export function distinctValues(def: ResourceDef, col: string) {

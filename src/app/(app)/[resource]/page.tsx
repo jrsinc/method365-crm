@@ -107,7 +107,7 @@ export default async function ListPage({ params, searchParams }: { params: Promi
                 </Link>
               );
             })}
-            {can(user, "bulk") && <a href={exportHref} className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs font-medium hover:bg-surface-2"><Icon name="download" size={13} />Export</a>}
+            {can(user, "admin") && <a href={exportHref} className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs font-medium hover:bg-surface-2"><Icon name="download" size={13} />Export</a>}
           </div>
         )}
         <form className="flex flex-wrap items-end gap-2 border-b border-line p-3" action={base}>
