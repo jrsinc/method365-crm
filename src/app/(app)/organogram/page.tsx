@@ -70,7 +70,7 @@ export default async function Organogram({ searchParams }: { searchParams: Promi
   const admin = user.role === "SUPER_ADMIN";
   const editing = admin && str(sp, "edit") === "1";
   const dept = str(sp, "dept");
-  const people = all<Person>("SELECT id, name, email, role, avatar_color, active, manager_id, job_title, department FROM users WHERE active = 1 ORDER BY name");
+  const people = all<Person>("SELECT id, name, email, role, avatar_color, active, manager_id, job_title, department FROM users WHERE active = 1 AND is_system = 0 ORDER BY name");
   const byId = new Map(people.map((p) => [p.id, p]));
   const shown = dept ? people.filter((p) => p.department === dept) : people;
   const shownIds = new Set(shown.map((p) => p.id));
@@ -85,7 +85,7 @@ export default async function Organogram({ searchParams }: { searchParams: Promi
   };
   const openHref = admin ? (id: string) => chartHref({ u: id }) : undefined;
   const sel = admin && str(sp, "u") ? get<Panel>(
-    "SELECT id, name, email, role, avatar_color, active, manager_id, job_title, department, two_factor, last_login_at, created_at, locked_until FROM users WHERE id = ?", str(sp, "u")) : undefined;
+    "SELECT id, name, email, role, avatar_color, active, manager_id, job_title, department, two_factor, last_login_at, created_at, locked_until FROM users WHERE id = ? AND is_system = 0", str(sp, "u")) : undefined;
 
   return (
     <div>

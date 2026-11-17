@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cx } from "./ui";
 import { Icon } from "./icons";
+import { PROVIDED_BY } from "@/lib/config";
 
 type Perms = { reports: boolean; bulk: boolean; forms: boolean; admin: boolean; products: boolean; superAdmin: boolean };
 type Item = { href: string; label: string; icon: string; show?: boolean; match?: string[]; badge?: number };
@@ -76,7 +77,7 @@ export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendin
       items: [
         { href: "/organogram", label: "Organogram", icon: "users" },
         { href: "/change-reviews", label: "Edit reviews", icon: "stamp", badge: pendingReviews },
-        { href: "/access", label: "Access roles", icon: "shield", show: perms.admin },
+        { href: "/access", label: "Access roles", icon: "shield", show: perms.superAdmin },
       ],
     },
     {
@@ -85,6 +86,7 @@ export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendin
         { href: "/documents", label: "Documents", icon: "file" },
         { href: "/import", label: "Import", icon: "upload", show: perms.bulk },
         { href: "/migration", label: "Migration", icon: "database", show: perms.admin },
+        { href: "/branding", label: "Company branding", icon: "building", show: perms.superAdmin },
         { href: "/backup", label: "Backup & restore", icon: "database", show: perms.superAdmin },
         { href: "/audit-logs", label: "Audit Logs", icon: "shield", show: perms.admin },
         { href: "/settings", label: "Settings", icon: "gear", match: ["/settings", "/admin", "/profile", "/forms"] },
@@ -104,26 +106,27 @@ export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendin
   return (
     <div className={cx("no-print bg-nav text-nav-ink md:sticky md:top-0 md:h-dvh", collapsed ? "md:w-[64px]" : "md:w-[232px]")}>
       <aside className="flex h-full flex-col">
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 px-4">
-          <Link href="/dashboard" className="flex min-w-0 items-center gap-2 font-semibold text-white" title={company?.name || appName}>
+        <div className={cx("flex shrink-0 items-center justify-between gap-2 px-4", company?.logo && !collapsed ? "py-3" : "h-14")}>
+          <Link href="/dashboard" className="min-w-0 font-semibold text-white" title={company?.logo ? `${company.name || "Company"} · ${PROVIDED_BY}` : appName}>
             {company?.logo ? (
-              // The customer's own logo (Settings → Company & branding), on white so any logo reads on the dark menu.
-              <span className={cx("grid h-8 shrink-0 place-items-center overflow-hidden rounded-md bg-white px-1", collapsed ? "w-8" : "max-w-[120px]")}>
-                <img src={company.logo} alt={`${company.name || "Company"} logo`} className="max-h-7 max-w-full object-contain" />
-              </span>
+              // The customer company's logo (Company branding), on white so any logo reads on the dark menu,
+              // with the Method365 credit under it.
+              <>
+                <span className={cx("grid h-9 place-items-center overflow-hidden rounded-md bg-white px-1.5", collapsed ? "w-8" : "max-w-[184px]")}>
+                  <img src={company.logo} alt={`${company.name || "Company"} logo`} className="max-h-7 max-w-full object-contain" />
+                </span>
+                {!collapsed && (
+                  <span className="mt-1 flex items-center gap-1 text-[10px] font-normal text-nav-muted">
+                    {PROVIDED_BY}
+                    <img src="/brand/method365-mark-light.png" alt="" className="h-3.5 w-3.5" />
+                  </span>
+                )}
+              </>
             ) : collapsed ? (
-              <img src="/brand/method365-mark.png" alt={appName} className="h-8 w-8 shrink-0 rounded-md bg-white p-0.5" />
+              <img src="/brand/method365-mark-light.png" alt={appName} className="h-8 w-8" />
             ) : (
-              // Method365's own logo, on white so it reads on the dark menu.
-              <span className="flex h-9 shrink-0 items-center rounded-md bg-white px-2">
-                <img src="/brand/method365-logo.png" alt={appName} className="h-6 w-auto" />
-              </span>
-            )}
-            {!collapsed && company?.logo && (
-              <span className="min-w-0 leading-tight">
-                <span className="block truncate">{company?.name || appName}</span>
-                {company?.name && <span className="block truncate text-[10px] font-normal text-nav-muted">{appName}</span>}
-              </span>
+              // No company logo yet: Method365's own logo, the light version for the dark menu.
+              <img src="/brand/method365-logo-light.png" alt={appName} className="h-8 w-auto" />
             )}
           </Link>
           <button className="rounded-md p-1.5 text-nav-ink hover:bg-white/10 md:hidden" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Menu">

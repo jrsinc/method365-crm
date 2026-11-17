@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLogo } from "@/lib/branding";
 
-/** The company logo set in Settings → Company & branding. Public, so the sign-in page can show it. */
+/** The company logo set on the Company branding page. Public, so the sign-in page can show it. */
 export async function GET() {
   const logo = getLogo();
   if (!logo) return new NextResponse(null, { status: 404 });

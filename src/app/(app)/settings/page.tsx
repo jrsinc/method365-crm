@@ -1,6 +1,7 @@
 import { confirmEdit } from "@/lib/auth/reauth";
 import { discountLimit } from "@/lib/discounts";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUser, can } from "@/lib/auth/dal";
 import type { Permission } from "@/lib/config";
@@ -8,10 +9,7 @@ import { getRoles, roleHas } from "@/lib/roles";
 import { get, run } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { str, type SP } from "@/lib/page-helpers";
-import { Button, Card, Input, Label, Notice, Select, Textarea, cx } from "@/components/ui";
-import { getBranding, logoUrl } from "@/lib/branding";
-import { saveBranding } from "@/lib/actions/branding";
-import { APP_NAME } from "@/lib/config";
+import { Button, Card, Input, Label, Notice, Select, cx } from "@/components/ui";
 import Profile from "../profile/page";
 import Users from "../admin/users/page";
 import Security from "../admin/security/page";
@@ -54,68 +52,16 @@ async function saveConfig(fd: FormData) {
   revalidatePath("/settings");
 }
 
-/** The customer company's name, logo and details, shown on quotes/documents, the sign-in page and the menu. */
-function CompanyBranding({ msg }: { msg: string }) {
-  const b = getBranding();
-  const logo = logoUrl(b);
-  const field = (k: keyof typeof b, label: string, props: { placeholder?: string; type?: string } = {}) => (
-    <div>
-      <Label htmlFor={`b_${k}`}>{label}</Label>
-      <Input id={`b_${k}`} name={k} defaultValue={b[k]} {...props} />
-    </div>
-  );
-  return (
-    <div className="max-w-4xl space-y-5">
-      {msg && <Notice tone={/saved/i.test(msg) ? "green" : "red"}>{msg}</Notice>}
-      <form action={saveBranding} className="space-y-5"
-        data-confirm-password="Enter your password to change the company details and logo.">
-        <Card title="Company logo">
-          <div className="flex flex-wrap items-start gap-5">
-            <div className="grid h-28 w-56 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-line bg-white p-3">
-              {logo ? <img src={logo} alt={`${b.company_name || "Company"} logo`} className="max-h-full max-w-full object-contain" />
-                : <span className="text-center text-xs text-ink-3">No logo yet</span>}
-            </div>
-            <div className="min-w-0 flex-1 space-y-2 text-sm">
-              <Label htmlFor="b_logo">{logo ? "Replace logo" : "Upload logo"}</Label>
-              <input id="b_logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp,image/gif"
-                className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:font-medium" />
-              <p className="text-xs text-ink-3">PNG, JPG, WebP or GIF, up to 1 MB. A wide logo on a white or transparent background works best. It appears on quote PDFs, the sign-in page and the menu.</p>
-              {logo && <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="remove_logo" value="1" className="h-4 w-4 accent-[var(--accent)]" /> Remove the current logo</label>}
-            </div>
-          </div>
-        </Card>
-        <Card title="Company details on documents">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {field("company_name", "Company name", { placeholder: "e.g. Jupiter Research Services" })}
-            {field("company_tax_id", "Tax / VAT / GST number")}
-            <div className="sm:col-span-2">
-              <Label htmlFor="b_company_address">Address</Label>
-              <Textarea id="b_company_address" name="company_address" rows={3} defaultValue={b.company_address} placeholder={"Street\nCity, State Postcode\nCountry"} />
-            </div>
-            {field("company_phone", "Phone", { type: "tel" })}
-            {field("company_email", "Email", { type: "email" })}
-            {field("company_website", "Website", { placeholder: "www.example.com" })}
-            <div className="sm:col-span-2">
-              <Label htmlFor="b_document_footer">Footer note on documents</Label>
-              <Textarea id="b_document_footer" name="document_footer" rows={2} defaultValue={b.document_footer} placeholder="e.g. Bank details, registered office, thank-you note" />
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-ink-3">Documents show these instead of the product name. They end with a small &ldquo;Powered by {APP_NAME}&rdquo; line.</p>
-        </Card>
-        <Button type="submit" variant="primary">Save company details</Button>
-      </form>
-    </div>
-  );
-}
-
 export default async function Settings({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const user = await requireUser();
   const admin = can(user, "admin");
   const tabs = [
-    ["profile", "Profile"], ...(admin ? [["company", "Company & branding"], ["users", "Users"], ["roles", "Roles & Permissions"]] : []),
+    ["profile", "Profile"], ...(admin ? [["users", "Users"]] : []), ...(user.role === "SUPER_ADMIN" ? [["roles", "Roles & Permissions"]] : []),
     ["preferences", "Preferences"], ["language", "Language"], ...(admin ? [["configuration", "Configuration"]] : []),
   ];
+  // Company branding has its own page now (Super Admins only).
+  if (str(sp, "tab") === "company") redirect("/branding");
   const tab = tabs.some(([k]) => k === str(sp, "tab")) ? str(sp, "tab") : "profile";
   const pref = (k: string) => get<{ value: string }>("SELECT value FROM settings WHERE key = ?", `pref:${user.id}:${k}`)?.value ?? "";
   const threshold = get<{ value: string }>("SELECT value FROM settings WHERE key = 'approval_threshold'")?.value ?? "5000000";
@@ -131,9 +77,8 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       </nav>
 
       {tab === "profile" && <Profile />}
-      {tab === "company" && admin && <CompanyBranding msg={str(sp, "msg")} />}
       {tab === "users" && admin && <Users />}
-      {tab === "roles" && admin && (
+      {tab === "roles" && user.role === "SUPER_ADMIN" && (
         <Card pad={false}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

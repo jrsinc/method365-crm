@@ -5,7 +5,7 @@ import { getRecord } from "@/lib/records";
 import { all, get } from "@/lib/db";
 import { baseCurrency } from "@/lib/settings";
 import { date, money, money2 } from "@/lib/format";
-import { APP_NAME } from "@/lib/config";
+import { APP_NAME, PREPARED_BY } from "@/lib/config";
 import { PrintButton } from "./print-button";
 import { accountAddress } from "@/lib/addresses";
 import { getBranding, logoUrl } from "@/lib/branding";
@@ -38,7 +38,7 @@ export default async function PrintQuote({ params }: { params: Promise<{ id: str
       <div className="no-print mb-6 flex justify-end"><PrintButton /></div>
       <header className="flex items-start justify-between gap-6 border-b border-[#e3e2dd] pb-6">
         <div className="min-w-0">
-          {/* The customer company's own logo and details (Settings → Company & branding). */}
+          {/* The customer company's own logo and details (Company branding). */}
           {logo && <img src={logo} alt={`${brand.company_name || "Company"} logo`} className="mb-2 max-h-16 max-w-[240px] object-contain" />}
           {(brand.company_name || !logo) && <p className="text-2xl font-semibold">{brand.company_name || APP_NAME}</p>}
           {brand.company_address && <p className="mt-1 whitespace-pre-wrap text-sm text-[#52514e]">{brand.company_address}</p>}
@@ -81,7 +81,10 @@ export default async function PrintQuote({ params }: { params: Promise<{ id: str
       {q.terms ? <section className="mt-10 text-xs text-[#52514e]"><p className="mb-1 font-medium text-[#18181a]">Terms & conditions</p><p className="whitespace-pre-wrap">{String(q.terms)}</p></section> : null}
       <footer className="mt-10 border-t border-[#e3e2dd] pt-3 text-xs text-[#7b7a74]">
         {brand.document_footer && <p className="mb-1 whitespace-pre-wrap text-[#52514e]">{brand.document_footer}</p>}
-        <p>Powered by {APP_NAME}</p>
+        <p className="flex items-center gap-1.5">
+          <img src="/brand/method365-mark.png" alt="" className="h-3.5 w-3.5" />
+          {PREPARED_BY}
+        </p>
       </footer>
     </main>
   );

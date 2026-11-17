@@ -59,7 +59,7 @@ const g = globalThis as unknown as { __roles?: { at: number; rows: RoleRow[] } }
 export function getRoles(fresh = false): RoleRow[] {
   if (!fresh && g.__roles && Date.now() - g.__roles.at < 30_000) return g.__roles.rows;
   const rows = all<{ key: string; label: string; description: string | null; permissions: string; modules: string; is_system: number; users: number }>(
-    `SELECT r.*, (SELECT COUNT(*) FROM users u WHERE u.role = r.key AND u.active = 1) users FROM roles r
+    `SELECT r.*, (SELECT COUNT(*) FROM users u WHERE u.role = r.key AND u.active = 1 AND u.is_system = 0) users FROM roles r
      ORDER BY r.is_system DESC, CASE r.key WHEN 'SUPER_ADMIN' THEN 0 WHEN 'MANAGEMENT' THEN 1 WHEN 'SALES_MANAGER' THEN 2 WHEN 'SALES_EXECUTIVE' THEN 3 ELSE 4 END, r.label`,
   ).map((r) => {
     let permissions: Permission[] | "*" = [];
@@ -86,6 +86,9 @@ export function moduleLevel(roleKey: string, module: string): ModuleLevel {
   if (roleKey === "SUPER_ADMIN") return "full";
   return getRole(roleKey)?.modules[moduleOf(module)] ?? "full";
 }
+
+/** Where "Create a new role" may return to: a user page or Access roles, never another site. */
+export const roleReturnTo = (p: string) => (/^\/(admin\/users|access)(\/|\?|$)/.test(p) ? p : "");
 
 /** Sidebar links this role can't open. */
 export function hiddenHrefs(roleKey: string) {

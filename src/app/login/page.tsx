@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
-import { APP_NAME } from "@/lib/config";
+import { APP_NAME, PROVIDED_BY } from "@/lib/config";
 import { LoginForm } from "./login-form";
 import { getBranding, logoUrl } from "@/lib/branding";
 
@@ -19,14 +19,16 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <div className="mb-6 text-center">
             {logo && <img src={logo} alt={`${brand.company_name || "Company"} logo`} className="mx-auto mb-2 max-h-16 max-w-[240px] object-contain" />}
             {brand.company_name && <p className="text-lg font-semibold">{brand.company_name}</p>}
-            <p className="text-xs text-ink-3">{APP_NAME}</p>
+            <p className="mt-1 flex items-center justify-center gap-1.5 text-xs text-ink-3">
+              {PROVIDED_BY}
+              <img src="/brand/method365-mark.png" alt="" className="h-4 w-4" />
+            </p>
           </div>
         ) : (
           <div className="mb-6 text-center">
-            {/* On white so the logo reads in dark mode too. */}
-            <span className="inline-block rounded-xl bg-white px-4 py-3">
-              <img src="/brand/method365-logo.png" alt={APP_NAME} className="mx-auto h-12 w-auto" />
-            </span>
+            {/* Transparent logo: the dark-text version in light mode, the light version in dark mode. */}
+            <img src="/brand/method365-logo.png" alt={APP_NAME} className="logo-for-light mx-auto h-12 w-auto" />
+            <img src="/brand/method365-logo-light.png" alt={APP_NAME} className="logo-for-dark mx-auto h-12 w-auto" />
             <p className="mt-1 text-xs text-ink-3">{APP_NAME}</p>
           </div>
         )}

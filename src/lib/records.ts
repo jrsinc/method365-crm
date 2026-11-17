@@ -16,8 +16,11 @@ export const PAGE_SIZE = 25;
 
 /* ---------- visibility & permissions ---------- */
 
+/** Super Admins (and roles given "See every record" on Access roles) see everyone's records. */
+export const seesAll = (user: SessionUser) => user.role === "SUPER_ADMIN" || can(user, "records.read.all");
+
 export function canReadAll(def: ResourceDef, user: SessionUser) {
-  return !def.ownerField || !!def.managePerm || can(user, "records.read.all");
+  return !def.ownerField || !!def.managePerm || seesAll(user);
 }
 
 /** The user's role access to this record type's module (Access roles page). */
@@ -38,7 +41,17 @@ export function scopeSql(def: ResourceDef, user: SessionUser, alias = "t"): { sq
     };
   }
   if (canReadAll(def, user)) return { sql: "1=1", params: [] };
-  return { sql: `${alias}.${def.ownerField} = ?`, params: [user.id] };
+  // Assigned to me, created by me, or (managers) assigned to anyone in my team.
+  return {
+    sql: `(${alias}.${def.ownerField} = ? OR ${alias}.created_by = ? OR ${alias}.${def.ownerField} IN (${TEAM_SQL}))`,
+    params: [user.id, user.id, user.id],
+  };
+}
+
+/** True when the record is assigned to someone in this user's team (direct or indirect reports). */
+export function inMyTeam(user: SessionUser, ownerId: unknown) {
+  if (!ownerId) return false;
+  return !!get(`SELECT 1 FROM (${TEAM_SQL}) WHERE id = ?`, user.id, String(ownerId));
 }
 
 export function canCreate(def: ResourceDef, user: SessionUser) {
@@ -52,8 +65,9 @@ export function canEdit(def: ResourceDef, user: SessionUser, row: Row) {
   if (!can(user, "records.write")) return false;
   // A task can be changed by whoever can see it: its assignee, who assigned it, their managers, Super Admins.
   if (def.key === "tasks") return true;
-  if (can(user, "records.read.all")) return true;
-  return !def.ownerField || row[def.ownerField] === user.id;
+  if (!def.ownerField || seesAll(user)) return true;
+  // Their own records, ones they created, and (managers) their team's.
+  return row[def.ownerField] === user.id || row.created_by === user.id || inMyTeam(user, row[def.ownerField]);
 }
 
 /**
@@ -167,7 +181,7 @@ export function refOptions(key: ResourceKey, user: SessionUser, limit = 500) {
 
 export function userOptions(includeInactive = false) {
   return all<{ id: string; label: string }>(
-    `SELECT id, name AS label FROM users ${includeInactive ? "" : "WHERE active = 1"} ORDER BY name`,
+    `SELECT id, name AS label FROM users WHERE is_system = 0${includeInactive ? "" : " AND active = 1"} ORDER BY name`,
   );
 }
 
@@ -394,7 +408,7 @@ export function insertRecord(
   applyRules(def, data, null, id);
   return tx(() => {
     if (def.numberEntity && def.numberField) data[def.numberField] = nextNumber(def.numberEntity);
-    const row = { id, ...data, ...extra };
+    const row = { id, ...data, ...(def.ownerField ? { created_by: user.id } : {}), ...extra };
     const cols = Object.keys(row);
     run(
       `INSERT INTO ${def.table} (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`,

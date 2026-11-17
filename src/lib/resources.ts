@@ -3,7 +3,7 @@ import {
   CASE_PRIORITIES, CASE_STATUSES, CASE_TYPES, CONTACT_STATUSES, DEAL_STAGES, DOCUMENT_ACCESS, DOCUMENT_CATEGORIES,
   FORECAST_CATEGORIES, INDUSTRIES, LEAD_RATINGS, LEAD_SOURCES, LEAD_STATUSES, MIGRATION_ENTITIES, MIGRATION_STATUSES,
   PRICE_SEGMENTS, PRODUCT_STATUSES, PRODUCT_TYPES, QUOTE_STATUSES, SOURCING_STATUSES, SUPPLIER_CATEGORIES, SUPPLIER_STATUSES,
-  TASK_PRIORITIES, TASK_STATUSES,
+  TASK_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES,
   WEB_FORM_FIELDS, type Permission,
 } from "./config";
 import { MATERIAL_ID_TYPES } from "./goods";
@@ -270,6 +270,7 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
     bulkFields: ["status", "priority"],
     fields: [
       { name: "title", label: "Title", type: "text", required: true, list: true, full: true },
+      { name: "category", label: "Type", type: "select", options: TASK_CATEGORIES, default: "General", required: true, list: true, filter: true },
       { name: "due_date", label: "Due date", type: "date", list: true },
       { name: "priority", label: "Priority", type: "select", options: TASK_PRIORITIES, default: "Normal", required: true, list: true, filter: true },
       { name: "status", label: "Status", type: "select", options: TASK_STATUSES, default: "Open", required: true, list: true, filter: true },

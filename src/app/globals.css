@@ -100,3 +100,12 @@ body {
 }
 
 details > summary::-webkit-details-marker { display: none; }
+
+/* Method365 logo: dark-text version on light pages, light version in dark mode. */
+.logo-for-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo-for-light { display: none; }
+  :root:not([data-theme="light"]) .logo-for-dark { display: block; }
+}
+:root[data-theme="dark"] .logo-for-light { display: none; }
+:root[data-theme="dark"] .logo-for-dark { display: block; }

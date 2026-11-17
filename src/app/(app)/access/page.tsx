@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { requirePerm } from "@/lib/auth/dal";
+import { requireSuperAdmin } from "@/lib/auth/dal";
+import { RoleSelect } from "@/components/role-select";
 import { all } from "@/lib/db";
-import { getRoles, MODULES, MODULE_LEVELS, type ModuleLevel } from "@/lib/roles";
+import { getRoles, roleReturnTo, MODULES, MODULE_LEVELS, type ModuleLevel } from "@/lib/roles";
 import { deleteRole, saveRole, setUserRole } from "@/lib/actions/team";
 import { str, type SP } from "@/lib/page-helpers";
 import { Avatar, Badge, Button, Card, Input, Label, LinkButton, Notice, PageHeader, Select, Textarea, cx } from "@/components/ui";
@@ -10,7 +11,7 @@ import type { Permission } from "@/lib/config";
 export const metadata = { title: "Access roles" };
 
 const PERMS: [Permission, string, string][] = [
-  ["records.read.all", "See every record", "Otherwise only records they own."],
+  ["records.read.all", "See every record", "Otherwise: records assigned to them or created by them, plus their team's (Organogram)."],
   ["records.write", "Create and edit records", "Every edit still asks for their password and goes to their manager."],
   ["records.assign", "Assign owners", "Change who owns a record."],
   ["bulk", "Import and bulk changes", "Exporting data is for administrators only."],
@@ -22,7 +23,8 @@ const PERMS: [Permission, string, string][] = [
 
 export default async function Access({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
-  await requirePerm("admin");
+  // Access roles are for Super Admins only.
+  await requireSuperAdmin();
   const roles = getRoles(true);
   const isNew = str(sp, "new") === "1";
   const copyFrom = roles.find((r) => r.key === str(sp, "copy"));
@@ -32,8 +34,10 @@ export default async function Access({ searchParams }: { searchParams: Promise<S
   const has = (p: Permission) => locked || (base ? base.permissions === "*" || base.permissions.includes(p) : false);
   const lvl = (m: string): ModuleLevel => (locked ? "full" : base?.modules[m] ?? (isNew && !copyFrom ? "view" : "full"));
   const users = all<{ id: string; name: string; email: string; role: string; avatar_color: string }>(
-    "SELECT id, name, email, role, avatar_color FROM users WHERE active = 1 ORDER BY name");
+    "SELECT id, name, email, role, avatar_color FROM users WHERE active = 1 AND is_system = 0 ORDER BY name");
   const msg = str(sp, "msg");
+  // Opened from a role dropdown's "Create a new role": go back there afterwards.
+  const returnTo = roleReturnTo(str(sp, "returnTo"));
   const groups = [...new Set(MODULES.map((m) => m.group))];
   const back = role ? `/access?role=${encodeURIComponent(role.key)}` : "/access";
 
@@ -58,13 +62,14 @@ export default async function Access({ searchParams }: { searchParams: Promise<S
         <div className="min-w-0 space-y-5">
           <form action={saveRole.bind(null, isNew ? null : role!.key)} className="space-y-5"
             data-confirm-password={isNew ? "Enter your password to create this role." : `Enter your password to change the ${role!.label} role.`}>
+            {isNew && returnTo && <input type="hidden" name="returnTo" value={returnTo} />}
             <Card title={isNew ? "New role" : role!.label}
               actions={!isNew && !locked ? <Link href={`/access?new=1&copy=${encodeURIComponent(role!.key)}`} className="text-xs text-accent hover:underline">Copy to a new role</Link> : null}>
               {locked && <div className="mb-3"><Notice tone="amber">Super Admin always has full access to everything, so nobody can lock the CRM&apos;s administrators out. You can still move people in or out of it below.</Notice></div>}
               {isNew && (
                 <p className="mb-3 text-sm text-ink-2">
                   Start from: {roles.map((r, i) => (
-                    <span key={r.key}>{i > 0 && " · "}<Link href={`/access?new=1&copy=${encodeURIComponent(r.key)}`} className={cx("hover:underline", copyFrom?.key === r.key ? "font-semibold text-accent" : "text-accent")}>{r.label}</Link></span>
+                    <span key={r.key}>{i > 0 && " · "}<Link href={`/access?new=1&copy=${encodeURIComponent(r.key)}${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ""}`} className={cx("hover:underline", copyFrom?.key === r.key ? "font-semibold text-accent" : "text-accent")}>{r.label}</Link></span>
                   ))}
                 </p>
               )}
@@ -121,7 +126,7 @@ export default async function Access({ searchParams }: { searchParams: Promise<S
               </p>
             </Card>
 
-            {!locked && <div className="flex gap-2"><Button type="submit" variant="primary">{isNew ? "Create role" : "Save role"}</Button>{isNew && <LinkButton href="/access">Cancel</LinkButton>}</div>}
+            {!locked && <div className="flex gap-2"><Button type="submit" variant="primary">{isNew ? "Create role" : "Save role"}</Button>{isNew && <LinkButton href={returnTo || "/access"}>Cancel</LinkButton>}</div>}
           </form>
 
           {!isNew && role && (
@@ -134,9 +139,7 @@ export default async function Access({ searchParams }: { searchParams: Promise<S
                     <span className="min-w-0 flex-1"><span className="block font-medium">{u.name}</span><span className="text-xs text-ink-3">{u.email}</span></span>
                     <form action={setUserRole.bind(null, u.id)} className="flex items-center gap-2" data-confirm-password={`Enter your password to change ${u.name}'s access role.`}>
                       <input type="hidden" name="back" value={back} />
-                      <Select name="role" defaultValue={u.role} aria-label={`${u.name}'s role`} className="w-44">
-                        {roles.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
-                      </Select>
+                      <RoleSelect defaultValue={u.role} ariaLabel={`${u.name}'s role`} className="w-44" roles={roles} canCreate returnTo={back} />
                       <Button type="submit" size="sm">Change</Button>
                     </form>
                   </li>

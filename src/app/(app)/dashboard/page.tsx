@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireUser, can } from "@/lib/auth/dal";
-import { leadsBySource, pipelineByStage, scopeFor, wonByMonth } from "@/lib/analytics";
+import { leadsBySource, ownerSql, pipelineByStage, scopeFor, wonByMonth } from "@/lib/analytics";
 import { all, get } from "@/lib/db";
 import { DEAL_STAGES } from "@/lib/config";
 import { baseCurrency } from "@/lib/settings";
@@ -27,8 +27,7 @@ export default async function Home() {
   const owner = scopeFor(user);
   const cur = baseCurrency().code;
   const fmt = (n: number) => money(n, cur, true);
-  const o = owner ? " AND owner_id = ?" : "";
-  const p = owner ? [owner] : [];
+  const { sql: o, p } = ownerSql("owner_id", owner);
 
   const leads = get<{ n: number; q: number }>(`SELECT COUNT(*) n, SUM(status IN ('Qualified','Proposal Sent','Negotiation','Won','Converted')) q FROM leads WHERE held = 0${o}`, ...p)!;
   const opp = get<{ open: number; won: number; lost: number; pipe: number; weighted: number; wonValue: number }>(
@@ -50,7 +49,7 @@ export default async function Home() {
       WHERE stage IN ('Won','Lost') AND closed_at >= date('now','start of month','-11 months')${o} GROUP BY m`, ...p);
   const team = all<{ owner_name: string; open: number; won: number }>(
     `SELECT COALESCE(u.name,'Unassigned') AS owner_name, SUM(d.stage NOT IN ('Won','Lost')) open, COALESCE(SUM(CASE WHEN d.stage='Won' THEN d.amount END),0) won
-       FROM deals d LEFT JOIN users u ON u.id = d.owner_id WHERE 1=1${owner ? " AND d.owner_id = ?" : ""} GROUP BY owner_name ORDER BY won DESC`, ...p);
+       FROM deals d LEFT JOIN users u ON u.id = d.owner_id WHERE 1=1${ownerSql("d.owner_id", owner).sql} GROUP BY owner_name ORDER BY won DESC`, ...p);
   const teamMax = Math.max(1, ...team.map((t) => t.won));
 
   return (

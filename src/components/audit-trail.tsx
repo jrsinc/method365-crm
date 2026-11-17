@@ -40,11 +40,11 @@ function detailText(raw: string | null) {
 
 export function auditEntries(entity: string, id: string): Entry[] {
   const edits = all<{ user_name: string | null; changes: string; status: string; reviewer_name: string | null; reviewed_at: string | null; note: string | null; created_at: string }>(
-    `SELECT u.name user_name, c.changes, c.status, rv.name reviewer_name, c.reviewed_at, c.note, c.created_at
+    `SELECT CASE WHEN u.is_system = 1 THEN 'System' ELSE u.name END user_name, c.changes, c.status, CASE WHEN rv.is_system = 1 THEN 'System' ELSE rv.name END reviewer_name, c.reviewed_at, c.note, c.created_at
        FROM change_reviews c LEFT JOIN users u ON u.id = c.user_id LEFT JOIN users rv ON rv.id = c.reviewer_id
       WHERE c.entity = ? AND c.record_id = ? ORDER BY c.created_at DESC LIMIT 300`, entity, id);
   const events = all<{ user_name: string | null; user_email: string | null; action: string; detail: string | null; created_at: string }>(
-    `SELECT u.name user_name, a.user_email, a.action, a.detail, a.created_at
+    `SELECT CASE WHEN u.is_system = 1 THEN 'System' ELSE u.name END user_name, CASE WHEN u.is_system = 1 THEN NULL ELSE a.user_email END user_email, a.action, a.detail, a.created_at
        FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
       WHERE a.entity = ? AND a.entity_id = ? ORDER BY a.id DESC LIMIT 300`, entity, id);
   const out: Entry[] = edits.map((e) => ({

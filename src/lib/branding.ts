@@ -3,8 +3,8 @@ import { all, run } from "./db";
 
 /**
  * The customer company using the CRM (e.g. Jupiter, who bought method365 CRM). Its admin sets the
- * name, logo and contact details once; they appear on every document (quote PDFs), the sign-in page
- * and the menu. method365 CRM stays as the product name ("Powered by method365 CRM").
+ * name, logo and contact details once (Company branding page, Super Admins only); they appear on every
+ * document (quote PDFs), emails, the sign-in page and the menu, with the fixed Method365 credits from config.
  */
 export type Branding = {
   company_name: string; company_address: string; company_phone: string; company_email: string;

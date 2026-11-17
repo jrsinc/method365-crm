@@ -1,4 +1,5 @@
 import "server-only";
+import { ownerSql } from "./analytics";
 
 /**
  * Tabular reports. Each one is a single read-only query; `{own:alias}` is replaced with an owner
@@ -127,9 +128,9 @@ export const REPORTS: ReportDef[] = [
 export function reportSql(def: ReportDef, ownerId: string | null) {
   const params: string[] = [];
   const sql = def.sql.replace(/\{own:(\w+)\}/g, (_m, a: string) => {
-    if (!ownerId) return "";
-    params.push(ownerId);
-    return ` AND ${a}.owner_id = ?`;
+    const o = ownerSql(`${a}.owner_id`, ownerId);
+    params.push(...o.p);
+    return o.sql;
   });
   return { sql, params };
 }

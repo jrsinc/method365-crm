@@ -12,7 +12,7 @@ import { QuickStatus } from "@/components/quick-status";
 export const metadata = { title: "Tasks" };
 
 type TaskRow = {
-  id: string; number: string | null; title: string; due_date: string | null; priority: string; status: string;
+  id: string; number: string | null; title: string; due_date: string | null; priority: string; status: string; category: string | null;
   owner_id: string | null; owner_name: string | null; owner_color: string | null;
   created_by: string | null; creator_name: string | null; related_type: string | null; related_id: string | null;
 };
@@ -54,7 +54,7 @@ export default async function TaskBoard({ searchParams }: { searchParams: Promis
 
   const statusSql = show === "open" ? OPEN : show === "done" ? "t.status = 'Done'" : "1=1";
   const rows = all<TaskRow>(
-    `SELECT t.id, t.number, t.title, t.due_date, t.priority, t.status, t.owner_id, t.created_by, t.related_type, t.related_id,
+    `SELECT t.id, t.number, t.title, t.category, t.due_date, t.priority, t.status, t.owner_id, t.created_by, t.related_type, t.related_id,
             o.name owner_name, o.avatar_color owner_color, c.name creator_name
        FROM tasks t LEFT JOIN users o ON o.id = t.owner_id LEFT JOIN users c ON c.id = t.created_by
       WHERE ${base} AND ${statusSql}
@@ -147,7 +147,10 @@ export default async function TaskBoard({ searchParams }: { searchParams: Promis
                         <td className="px-3 py-2 tabular-nums text-ink-3">{i + 1}</td>
                         <td className="min-w-[220px] px-3 py-2">
                           <Link href={`/tasks/${t.id}`} className={cx("font-medium hover:underline", !open && "text-ink-2 line-through decoration-ink-3/50")}>{t.title}</Link>
-                          {rel && <p className="text-xs text-ink-3">{rel.singular}: <Link href={`/${rel.type}/${rel.id}`} className="hover:underline">{rel.title}</Link></p>}
+                          <p className="text-xs text-ink-3">
+                            {t.category ?? "General"}
+                            {rel ? <> · {rel.singular}: <Link href={`/${rel.type}/${rel.id}`} className="hover:underline">{rel.title}</Link></> : null}
+                          </p>
                         </td>
                         <td className="whitespace-nowrap px-3 py-2">
                           {view.key !== "mine" && t.owner_name ? <span className="inline-flex items-center gap-1.5"><Avatar name={t.owner_name} color={t.owner_color ?? undefined} size={20} />{t.owner_name}</span> : who ?? "—"}

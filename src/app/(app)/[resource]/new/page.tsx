@@ -39,15 +39,15 @@ export default async function NewPage({ params, searchParams }: { params: Promis
   ];
   const relatedPicker = def.polymorphic && !hidden.related_type && def.key !== "approvals" ? (
     <div className="max-w-md">
-      <Label htmlFor="f_related">Related to</Label>
+      <Label htmlFor="f_related">Related to{def.key === "tasks" ? " (optional)" : ""}</Label>
       <Select id="f_related" name="related" defaultValue="">
-        <option value="">— Nothing —</option>
+        <option value="">{def.key === "tasks" ? "— None: a general task —" : "— Nothing —"}</option>
         {pickable.map((g) => {
           const opts = refOptions(g.key, user, 300);
           return opts.length ? <optgroup key={g.key} label={g.label}>{opts.map((o) => <option key={o.id} value={`${g.key}:${o.id}`}>{o.label}</option>)}</optgroup> : null;
         })}
       </Select>
-      <p className="mt-1 text-xs text-ink-3">It then shows on that record&apos;s timeline.</p>
+      <p className="mt-1 text-xs text-ink-3">{def.key === "tasks" ? "Leave it as None for a general or internal task (e.g. prepare a report). Linked tasks also show on that record's timeline." : "It then shows on that record's timeline."}</p>
     </div>
   ) : null;
   const back = str(sp, "returnTo");

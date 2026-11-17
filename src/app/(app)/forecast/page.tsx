@@ -4,7 +4,7 @@ import { confirmEdit } from "@/lib/auth/reauth";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { requireUser, can } from "@/lib/auth/dal";
-import { scopeFor } from "@/lib/analytics";
+import { ownerSql, scopeFor } from "@/lib/analytics";
 import { all, get } from "@/lib/db";
 import { DEAL_STAGES, FORECAST_CATEGORIES, OPEN_STAGES } from "@/lib/config";
 import { baseCurrency } from "@/lib/settings";
@@ -45,8 +45,7 @@ export default async function Forecast({ searchParams }: { searchParams: Promise
   const owner = scopeFor(user);
   const cur = baseCurrency().code;
   const fmt = (n: number) => money(n, cur);
-  const o = owner ? " AND d.owner_id = ?" : "";
-  const p = owner ? [owner] : [];
+  const { sql: o, p } = ownerSql("d.owner_id", owner);
   const by = BREAKDOWNS[str(sp, "by")] ? str(sp, "by") : "owner";
 
   const t = get<{ c_commit: number; best: number; pipe: number; weighted: number; total: number; n: number; margin: number }>(

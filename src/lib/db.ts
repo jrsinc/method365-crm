@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { seed } from "./seed";
-import { ROLE_LABELS, ROLE_PERMISSIONS } from "./config";
+import { CREATED_BY_TABLES, ROLE_LABELS, ROLE_PERMISSIONS, SYSTEM_ADMIN_EMAIL } from "./config";
 
 const DB_PATH = process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "crm.db");
 
@@ -507,6 +507,42 @@ function migrate(db: DatabaseSync) {
   }
   db.exec(`UPDATE sourcing_requests SET supplier_id = (SELECT s.id FROM suppliers s WHERE lower(s.name) = lower(sourcing_requests.supplier))
            WHERE supplier_id IS NULL`);
+
+  // Who created each assigned record, so people see records assigned to them *and* by them.
+  // Existing rows are filled in from the audit trail's "create" entries.
+  for (const [table, entity] of Object.entries(CREATED_BY_TABLES)) {
+    if (cols(table).includes("created_by")) continue;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN created_by TEXT REFERENCES users(id) ON DELETE SET NULL`);
+    db.prepare(`UPDATE ${table} SET created_by = (SELECT a.user_id FROM audit_log a WHERE a.entity = ? AND a.entity_id = ${table}.id AND a.action = 'create' ORDER BY a.id LIMIT 1)`).run(entity);
+  }
+
+  // Tasks have a type, so general tasks (not linked to any record) are easy to add and find.
+  if (!cols("tasks").includes("category")) {
+    db.exec("ALTER TABLE tasks ADD COLUMN category TEXT");
+    db.exec("UPDATE tasks SET category = CASE WHEN related_id IS NULL THEN 'General' ELSE 'Follow-up' END");
+  }
+
+  // The Method365 system account (the seeded administrator) is masked: hidden from the Organogram,
+  // user lists and pickers, and shown as "System" in the audit trail.
+  if (!cols("users").includes("is_system")) {
+    db.exec("ALTER TABLE users ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0");
+    db.exec(`UPDATE users SET is_system = 1 WHERE lower(email) = '${SYSTEM_ADMIN_EMAIL}'`);
+    db.exec(`UPDATE users SET manager_id = NULL WHERE manager_id IN (SELECT id FROM users WHERE is_system = 1)`);
+  }
+
+  // Record visibility (one time): only Super Admins see every record. Everyone else sees records assigned
+  // to them or created by them, and managers also see their team's (Organogram). The "See every record"
+  // permission stays available on Access roles for a Super Admin to grant on purpose.
+  if (!db.prepare("SELECT 1 FROM settings WHERE key = 'migr.visibility_v2'").get()) {
+    for (const r of db.prepare("SELECT key, permissions FROM roles WHERE key <> 'SUPER_ADMIN'").all() as { key: string; permissions: string }[]) {
+      let p: unknown;
+      try { p = JSON.parse(r.permissions); } catch { continue; }
+      if (Array.isArray(p) && p.includes("records.read.all")) {
+        db.prepare("UPDATE roles SET permissions = ? WHERE key = ?").run(JSON.stringify(p.filter((x) => x !== "records.read.all")), r.key);
+      }
+    }
+    db.exec("INSERT INTO settings (key, value) VALUES ('migr.visibility_v2', datetime('now'))");
+  }
 
   // Audit trail is append-only: the database itself refuses to change or delete entries.
   // Edit-review rows may only get their decision (status, reviewer, note) filled in.

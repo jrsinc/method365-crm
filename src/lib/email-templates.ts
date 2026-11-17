@@ -1,7 +1,7 @@
 import "server-only";
 import fs from "node:fs";
 import path from "node:path";
-import { APP_NAME } from "./config";
+import { APP_NAME, PREPARED_BY } from "./config";
 import { getBranding, getLogo } from "./branding";
 
 /**
@@ -33,7 +33,7 @@ const builtInLogo = () => {
   return productLogo;
 };
 
-/** The logo to embed as cid:logo: the company's (Settings → Company & branding), else Method365's. */
+/** The logo to embed as cid:logo: the company's (Company branding), else Method365's. */
 export const logoAttachment = () => {
   const l = getLogo();
   if (l) return { filename: `logo.${l.type.split("/")[1] || "png"}`, content: l.bytes, contentType: l.type, cid: "logo" };
@@ -66,7 +66,7 @@ export function layout(opts: { title: string; preheader: string; body: string; s
       <tr><td style="padding:18px 8px 0;font-size:12px;line-height:1.6;color:${MUTED};text-align:center">
         ${b.company_name ? `${esc(b.company_name)}<br>` : ""}${b.company_address ? `${esc(b.company_address).replace(/\n/g, ", ")}<br>` : ""}${contact ? `${contact}<br>` : ""}
         ${opts.support ? `Need help? Reply to this email or write to <a href="mailto:${esc(opts.support)}" style="color:${ACCENT};text-decoration:none">${esc(opts.support)}</a>.<br>` : ""}
-        <span style="color:#9a998f">Sent by ${esc(APP_NAME)} &middot; This is an automated message.</span>
+        <span style="color:#9a998f">${esc(PREPARED_BY)} &middot; This is an automated message.</span>
       </td></tr>
     </table>
   </td></tr>

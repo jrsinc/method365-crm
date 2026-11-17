@@ -1,21 +1,33 @@
 import "server-only";
 import { all, get } from "./db";
-import { can } from "./auth/dal";
+import { inMyTeam, seesAll, TEAM_SQL } from "./records";
 import type { SessionUser } from "./auth/session";
 import { DEAL_STAGES, LEAD_STATUSES } from "./config";
 import { toBaseSql } from "./settings";
 
 export type Scope = { ownerId?: string | null; sinceDays?: number | null };
 
-/** Users without records.read.all only ever see their own numbers. */
+/**
+ * Whose numbers a user sees: Super Admins everyone (or one person they pick); everyone else their own
+ * plus their team's ("team:<id>"), or one person from their team.
+ */
 export function scopeFor(user: SessionUser, requestedOwner?: string | null): string | null {
-  if (!can(user, "records.read.all")) return user.id;
-  return requestedOwner || null;
+  if (seesAll(user)) return requestedOwner || null;
+  if (requestedOwner && (requestedOwner === user.id || inMyTeam(user, requestedOwner))) return requestedOwner;
+  return `team:${user.id}`;
 }
 
-function ownerClause(alias: string, owner: string | null | undefined) {
-  return owner ? { sql: ` AND ${alias}.owner_id = ?`, p: [owner] } : { sql: "", p: [] as string[] };
+/** SQL for a scopeFor() value: " AND <col> ..." with its parameters. */
+export function ownerSql(col: string, owner: string | null | undefined): { sql: string; p: string[] } {
+  if (!owner) return { sql: "", p: [] };
+  if (owner.startsWith("team:")) {
+    const id = owner.slice(5);
+    return { sql: ` AND (${col} = ? OR ${col} IN (${TEAM_SQL}))`, p: [id, id] };
+  }
+  return { sql: ` AND ${col} = ?`, p: [owner] };
 }
+
+const ownerClause = (alias: string, owner: string | null | undefined) => ownerSql(`${alias}.owner_id`, owner);
 function sinceClause(col: string, days: number | null | undefined) {
   return days ? { sql: ` AND ${col} >= datetime('now', ?)`, p: [`-${days} days`] } : { sql: "", p: [] as string[] };
 }
@@ -110,7 +122,8 @@ export function dealOutcomes(owner: string | null, sinceDays: number | null) {
 
 export function performanceByOwner(sinceDays: number | null, owner: string | null) {
   const days = sinceDays ? `-${sinceDays} days` : "-100 years";
-  const o = owner ? " AND u.id = ?" : "";
+  const ou = ownerSql("u.id", owner);
+  const o = ou.sql;
   return all<{
     id: string; name: string; leads: number; converted: number; won: number; lost: number; wonValue: number; open: number; activities: number;
   }>(
@@ -122,6 +135,6 @@ export function performanceByOwner(sinceDays: number | null, owner: string | nul
        (SELECT COALESCE(SUM(${amt}),0) FROM deals d WHERE d.owner_id = u.id AND d.stage = 'Won' AND d.closed_at >= datetime('now', ?1)) wonValue,
        (SELECT COUNT(*) FROM deals d WHERE d.owner_id = u.id AND d.stage NOT IN ('Won','Lost')) open,
        (SELECT COUNT(*) FROM activities a WHERE a.owner_id = u.id AND a.occurred_at >= datetime('now', ?1)) activities
-     FROM users u WHERE u.active = 1${o} ORDER BY wonValue DESC, u.name`,
-    days, ...(owner ? [owner] : []));
+     FROM users u WHERE u.active = 1 AND u.is_system = 0${o} ORDER BY wonValue DESC, u.name`,
+    days, ...ou.p);
 }

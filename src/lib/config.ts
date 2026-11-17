@@ -1,4 +1,8 @@
 export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "method365 CRM";
+/** Method365 provides the CRM as a service to each customer company. These credits are fixed: not set by env or settings. */
+export const PROVIDER = "Method365";
+export const PROVIDED_BY = "Provided by Method365";
+export const PREPARED_BY = "Prepared through Method365 CRM";
 export const APP_VERSION = "v0.1.0";
 /** Shown in a banner at the bottom of every page when set, e.g. "Demo environment". */
 export const ENV_LABEL = process.env.NEXT_PUBLIC_ENV_LABEL ?? "Demo environment";
@@ -42,7 +46,6 @@ export type Permission =
 export const ROLE_PERMISSIONS: Record<Role, Permission[] | "*"> = {
   SUPER_ADMIN: "*",
   SALES_MANAGER: [
-    "records.read.all",
     "records.write",
     "records.assign",
     "bulk",
@@ -51,8 +54,21 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[] | "*"> = {
     "products.manage",
   ],
   SALES_EXECUTIVE: ["records.write"],
-  MANAGEMENT: ["records.read.all", "reports"],
+  MANAGEMENT: ["reports"],
 };
+
+/**
+ * Record types that are assigned to someone (owner_id). People see the ones assigned to them or created by
+ * them, managers also see their team's, and Super Admins see all. Table → audit entity name.
+ */
+export const CREATED_BY_TABLES: Record<string, string> = {
+  leads: "leads", contacts: "contacts", accounts: "accounts", deals: "opportunities", quotes: "quotes",
+  activities: "activities", cases: "cases", campaigns: "campaigns", sourcing_requests: "sourcing", documents: "documents",
+};
+
+/** The Method365 system account (seeded administrator). It's masked: hidden from people lists, "System" in logs. */
+export const SYSTEM_ADMIN_EMAIL = "admin@method365.dev";
+export const SYSTEM_NAME = "System";
 
 export function roleCan(role: Role, perm: Permission) {
   const p = ROLE_PERMISSIONS[role];
@@ -92,6 +108,8 @@ export const MIGRATION_STATUSES = ["Draft", "Trial load", "Reconciled", "Approve
 export const PRICE_SEGMENTS = ["All customers", "Hospital", "Distributor", "Wholesaler", "Retail", "Government"];
 export const TASK_STATUSES = ["Open", "In Progress", "Done", "Cancelled"];
 export const TASK_PRIORITIES = ["Low", "Normal", "High", "Urgent"];
+/** A task's type. "General" and "Other" tasks don't need to be linked to a customer record. */
+export const TASK_CATEGORIES = ["General", "Follow-up", "Call", "Meeting", "Email", "Other"];
 export const ACTIVITY_TYPES = ["Call", "Email", "Meeting", "Note"];
 export const QUOTE_STATUSES = ["Draft", "Submitted", "Approved", "Issued", "Pending Feedback", "Accepted", "Won", "Rejected", "Expired", "Withdrawn"];
 export const WEB_FORM_FIELDS = ["first_name", "last_name", "email", "phone", "company", "title", "message"];

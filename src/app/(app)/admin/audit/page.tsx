@@ -19,7 +19,9 @@ export default async function Audit({ searchParams }: { searchParams: Promise<SP
   const page = Math.max(1, Number(str(sp, "page")) || 1);
   const total = get<{ n: number }>(`SELECT COUNT(*) n FROM audit_log WHERE ${where.join(" AND ")}`, ...params)!.n;
   const rows = all<{ id: number; user_email: string | null; action: string; entity: string | null; entity_id: string | null; detail: string | null; ip: string | null; created_at: string }>(
-    `SELECT * FROM audit_log WHERE ${where.join(" AND ")} ORDER BY id DESC LIMIT ? OFFSET ?`, ...params, PAGE, (page - 1) * PAGE);
+    `SELECT a.id, a.action, a.entity, a.entity_id, a.detail, a.ip, a.created_at,
+            CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.id = a.user_id AND u.is_system = 1) THEN 'System' ELSE a.user_email END user_email
+       FROM audit_log a WHERE ${where.join(" AND ")} ORDER BY a.id DESC LIMIT ? OFFSET ?`, ...params, PAGE, (page - 1) * PAGE);
   const entities = all<{ entity: string }>("SELECT DISTINCT entity FROM audit_log WHERE entity IS NOT NULL ORDER BY entity").map((r) => r.entity);
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const linkable = new Set(["leads", "contacts", "accounts", "opportunities", "quotes", "catalogue", "cases", "campaigns", "approvals", "sourcing", "documents", "tasks", "activities", "forms"]);

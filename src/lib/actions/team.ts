@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requirePerm, requireSuperAdmin, requireUser } from "../auth/dal";
+import { requireSuperAdmin, requireUser } from "../auth/dal";
 import { confirmEdit } from "../auth/reauth";
 import { revokeUserSessions, type SessionUser } from "../auth/session";
 import { all, get, run, tx } from "../db";
@@ -10,7 +10,7 @@ import { audit } from "../audit";
 import { getResource } from "../resources";
 import { recalcQuote } from "../records";
 import { canReview, getReview, managerChain } from "../reviews";
-import { getRoles, invalidateRoles, MODULES, MODULE_LEVELS, type ModuleLevel } from "../roles";
+import { getRoles, invalidateRoles, MODULES, MODULE_LEVELS, type ModuleLevel, roleReturnTo } from "../roles";
 import type { Permission } from "../config";
 import { notify } from "../notify";
 
@@ -103,7 +103,7 @@ export async function saveReportingLine(userId: string, fd: FormData) {
 const PERMS: Permission[] = ["records.read.all", "records.write", "records.assign", "bulk", "reports", "forms.manage", "products.manage", "admin"];
 
 export async function saveRole(key: string | null, fd: FormData) {
-  const admin = await requirePerm("admin");
+  const admin = await requireSuperAdmin();
   const back = key ? `/access?role=${encodeURIComponent(key)}` : "/access?new=1";
   await needPassword(admin, fd, "roles", key, back);
   if (key === "SUPER_ADMIN") go(back, "Super Admin always has full access and can't be changed.");
@@ -132,11 +132,20 @@ export async function saveRole(key: string | null, fd: FormData) {
   invalidateRoles();
   await audit(admin, "role.save", "roles", key, { permissions, modules });
   revalidatePath("/", "layout");
+  // Created from a role dropdown: go back there with the new role selected.
+  const returnTo = String(fd.get("returnTo") ?? "");
+  if (roleReturnTo(returnTo)) {
+    const u = new URL(returnTo, "http://x");
+    u.searchParams.set("role", key!);
+    u.searchParams.delete("msg");
+    if (u.pathname === "/access") go(`/access?role=${encodeURIComponent(key!)}`, `Saved the ${label} role. Use "Add someone" below to move people into it.`);
+    go(u.pathname + u.search, `Created the ${label} role. It's selected below: save to apply it.`);
+  }
   go(`/access?role=${encodeURIComponent(key!)}`, `Saved the ${label} role.`);
 }
 
 export async function deleteRole(key: string, fd: FormData) {
-  const admin = await requirePerm("admin");
+  const admin = await requireSuperAdmin();
   const back = `/access?role=${encodeURIComponent(key)}`;
   await needPassword(admin, fd, "roles", key, back);
   const role = get<{ is_system: number; label: string }>("SELECT is_system, label FROM roles WHERE key = ?", key);
@@ -150,7 +159,7 @@ export async function deleteRole(key: string, fd: FormData) {
 }
 
 export async function setUserRole(userId: string, fd: FormData) {
-  const admin = await requirePerm("admin");
+  const admin = await requireSuperAdmin();
   const back = String(fd.get("back") ?? "/access").startsWith("/access") ? String(fd.get("back")) : "/access";
   await needPassword(admin, fd, "users", userId, back);
   const role = String(fd.get("role") ?? "");

@@ -10,7 +10,7 @@ export const metadata = { title: "Users" };
 export default async function Users() {
   await requirePerm("admin");
   const users = all<{ id: string; name: string; email: string; role: string; active: number; two_factor: number; last_login_at: string | null; avatar_color: string; locked_until: string | null }>(
-    "SELECT id, name, email, role, active, two_factor, last_login_at, avatar_color, locked_until FROM users ORDER BY active DESC, name",
+    "SELECT id, name, email, role, active, two_factor, last_login_at, avatar_color, locked_until FROM users WHERE is_system = 0 ORDER BY active DESC, name",
   );
   const nowSql = new Date().toISOString().slice(0, 19).replace("T", " ");
   return (

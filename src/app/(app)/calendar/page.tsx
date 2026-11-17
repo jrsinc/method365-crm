@@ -1,4 +1,6 @@
 import { moduleLevel } from "@/lib/roles";
+import { ownerSql, scopeFor } from "@/lib/analytics";
+import { seesAll } from "@/lib/records";
 import Link from "next/link";
 import { requireUser, can } from "@/lib/auth/dal";
 import { all } from "@/lib/db";
@@ -31,8 +33,10 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const user = await requireUser();
   if (moduleLevel(user.role, "calendar") === "none") redirect("/forbidden");
-  const readAll = can(user, "records.read.all");
-  const ownerFilter = readAll ? str(sp, "owner") : user.id;
+  // Super Admins: everyone (or one person). Others: their own and their team's (or one team member).
+  const readAll = seesAll(user);
+  const scope = scopeFor(user, str(sp, "owner") || null);
+  const ownerFilter = scope?.startsWith("team:") ? "" : scope ?? "";
   const priority = str(sp, "priority");
   const view = ["month", "week", "day"].includes(str(sp, "view")) ? str(sp, "view") : "month";
   const today = ymd(new Date());
@@ -53,8 +57,7 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
     end = new Date(sel.getTime() + 86400_000);
   }
 
-  const o = ownerFilter ? " AND x.owner_id = ?" : "";
-  const p = ownerFilter ? [ownerFilter] : [];
+  const { sql: o, p } = ownerSql("x.owner_id", scope);
   const acts = all<Ev>(
     `SELECT x.id, 'activity' kind, x.type, x.subject title, substr(x.occurred_at,1,10) day, substr(x.occurred_at,12,5) time,
             (SELECT u.name FROM users u WHERE u.id = x.owner_id) owner, NULL priority

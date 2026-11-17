@@ -87,8 +87,9 @@ export async function submitEmail(_: LoginState, form: FormData): Promise<LoginS
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { step: "email", error: "Enter a valid email address." };
   await clearChallenge();
   const user = get<{ id: string }>("SELECT id FROM users WHERE email = ?", email);
+  // Tell the person straight away when no user has this email, before asking for a password.
+  if (!user) return { step: "email", email, error: "No user found with this email. Check it, or ask your administrator to add you." };
   const token = randomToken();
-  // Always continue to the password step so the form does not reveal which emails exist.
   run(
     "INSERT INTO login_challenges(token_hash, email, user_id, step, expires_at) VALUES (?,?,?,?, datetime('now', ?))",
     sha256(token),

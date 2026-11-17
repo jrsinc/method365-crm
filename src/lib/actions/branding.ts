@@ -2,12 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requirePerm } from "../auth/dal";
+import { requireSuperAdmin } from "../auth/dal";
 import { confirmEdit } from "../auth/reauth";
 import { audit } from "../audit";
 import { BRAND_KEYS, LOGO_MAX_BYTES, LOGO_TYPES, removeLogo, setBrand } from "../branding";
 
-const back = (msg: string): never => redirect(`/settings?tab=company&msg=${encodeURIComponent(msg)}`);
+const back = (msg: string): never => redirect(`/branding?msg=${encodeURIComponent(msg)}`);
 
 /** Recognise the image from its first bytes, so a renamed file can't pass as a logo. */
 function sniff(b: Buffer): string | null {
@@ -20,7 +20,7 @@ function sniff(b: Buffer): string | null {
 
 /** Company name, logo and details shown on documents. Super Admins only; needs their password like any edit. */
 export async function saveBranding(fd: FormData) {
-  const admin = await requirePerm("admin");
+  const admin = await requireSuperAdmin();
   if (!(await confirmEdit(admin, fd.get("$confirm_password"), "settings", "branding"))) back("Nothing changed: that password isn't right.");
 
   for (const k of BRAND_KEYS) {
@@ -45,5 +45,5 @@ export async function saveBranding(fd: FormData) {
   }
   await audit(admin, "settings.branding", "settings", "branding", { logo: logoNote.trim() || "unchanged" });
   revalidatePath("/", "layout");
-  back(`Company details saved.${logoNote} They now appear on quotes and other documents.`);
+  back(`Company branding saved.${logoNote} It now appears at the top of the CRM and on every document.`);
 }

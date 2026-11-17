@@ -37,7 +37,7 @@ export function LoginForm() {
         <>
           <div>
             <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" autoComplete="username" required autoFocus placeholder="you@company.com" />
+            <Input id="email" name="email" type="email" autoComplete="username" required autoFocus placeholder="you@company.com" defaultValue={state.email} />
           </div>
           <Button type="submit" name="intent" value="email" variant="primary" className="w-full" disabled={pending}>
             {pending ? "Checking…" : "Continue"}
