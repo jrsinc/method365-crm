@@ -154,13 +154,25 @@ Copy the `backups/` folder off the server regularly, for example to OneDrive or 
 
 ## 8. Updating to a new version
 
+Use the update script. It keeps the site up while the new version builds:
+
 ```bash
 cd /opt/method365-crm
-git pull
-npm ci
-npm run build
-pm2 restart method365-crm
+bash scripts/update.sh
 ```
+
+What it does:
+
+1. Pulls the latest version (`git pull --ff-only`).
+2. Runs `npm ci` only when the packages changed.
+3. Builds into a separate folder (`.next-build`) while the live site keeps running from `.next`.
+4. **If the build fails, it stops there and the site stays up on the old version.**
+5. Swaps in the new build and restarts pm2.
+6. Checks that `/login` answers. If it doesn't within a minute, it puts the previous version back and restarts again.
+
+`bash scripts/update.sh --force` rebuilds even when already on the latest version. To use a different pm2 name or port, set them first, for example `PM2_NAME=crm PORT=3001 bash scripts/update.sh`.
+
+Don't run `npm run build` by hand while the CRM is running. It overwrites the `.next` folder the live site is using, and the site shows **502 Bad Gateway** until the next restart.
 
 ## Windows server instead of Linux
 
@@ -178,4 +190,5 @@ pm2 restart method365-crm
 | Signed out on every click | You're on plain `http`. Use HTTPS, or set `INSECURE_COOKIES=1` for testing only |
 | Outlook "redirect URI mismatch" | `MS_REDIRECT_URI` must exactly match the URL in Entra |
 | Sign-in codes not arriving | Settings → Security shows the reason; the server log line `[mail] sent to … reply="250 OK id=…"` proves the host accepted it. Check Microsoft 365 quarantine for crm@method365sign.com |
+| **502 Bad Gateway** | The app isn't answering on port 3001. Run `pm2 status`: an app that is stopped or errored, or has a high `↺` restart count, has crashed (see `pm2 logs method365-crm --err`). If it happens after updates, update with `bash scripts/update.sh` instead of building by hand. If it happens after the server restarts, run `pm2 save` and `pm2 startup` once |
 | Logs | `pm2 logs method365-crm` |
