@@ -62,7 +62,7 @@ export function DealLines({
                   <td className="px-3 py-2">{unitOf(l.product_id ? l : null)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(l.target_price == null ? null : l.target_price * l.quantity)}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <Link href={l.sourcing_href} className="text-xs text-accent hover:underline">Ask a supplier</Link>
+                    <Link href={l.sourcing_href} className="text-xs text-accent hover:underline">Ask suppliers</Link>
                     {editable && (
                       <form action={removeAction.bind(null, l.id)} className="ml-3 inline" data-confirm-password="Enter your password to remove this product line.">
                         <button className="text-xs text-danger hover:underline">Remove</button>

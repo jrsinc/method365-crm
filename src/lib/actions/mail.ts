@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser, can } from "../auth/dal";
 import { RESOURCES, RELATABLE, type ResourceKey } from "../resources";
 import { getRecord, insertRecord } from "../records";
-import { calendarEvent, connection, disconnect, mailActionsEnabled, matchSender, listFolders, message, messageHtml, moveMessage, respond, safeFolder, setFlag, setPinned, setRead, type MailFull } from "../outlook";
+import { calendarEvent, connection, disconnect, mailActionsEnabled, matchSender, listFolders, message, messageHtml, moveMessage, respond, safeFolder, setFlag, setPinned, setRead, type MailFull, sendDraft, updateDraft } from "../outlook";
 import { audit } from "../audit";
 import { get, run } from "../db";
 
@@ -265,6 +265,44 @@ export async function deleteEmail(messageId: string, fd: FormData) {
   try { await moveMessage(user.id, messageId, "deleteditems"); } catch (e) { backTo(fd, messageId, `Couldn't delete it: ${(e as Error).message}`); }
   await audit(user, "outlook.delete", "mailbox", user.id);
   backToList(fd, "Moved to Deleted Items.");
+}
+
+/** The draft as edited on the Outlook page (To, CC, BCC, subject, message). */
+function draftFrom(fd: FormData, messageId: string) {
+  const c = {
+    to: emails(fd.get("to")), cc: emails(fd.get("cc")), bcc: emails(fd.get("bcc")),
+    subject: String(fd.get("subject") ?? "").trim().slice(0, 300), text: String(fd.get("body") ?? "").slice(0, 50_000),
+  };
+  const bad = [...c.to, ...c.cc, ...c.bcc].filter((e) => !validEmail(e));
+  if (bad.length) backTo(fd, messageId, `Not saved: check these email addresses: ${bad.join(", ")}`);
+  return c;
+}
+
+/** Save changes to a draft in the user's Outlook Drafts. */
+export async function saveDraftEmail(messageId: string, fd: FormData) {
+  const user = await requireUser();
+  const c = draftFrom(fd, messageId);
+  try { await updateDraft(user.id, messageId, c); } catch (e) { backTo(fd, messageId, `Not saved: ${(e as Error).message}`); }
+  backTo(fd, messageId, "Draft saved in your Outlook Drafts.");
+}
+
+/** Save the draft as shown, then send it from the user's own mailbox (Outlook keeps it in Sent Items). */
+export async function sendDraftEmail(messageId: string, fd: FormData) {
+  const user = await requireUser();
+  if (!mailActionsEnabled(user.id)) backTo(fd, messageId, "Not sent: Microsoft needs to allow sending first.");
+  const c = draftFrom(fd, messageId);
+  if (!c.to.length) backTo(fd, messageId, "Not sent: add at least one To address.");
+  try {
+    await updateDraft(user.id, messageId, c);
+    await sendDraft(user.id, messageId);
+  } catch (e) {
+    backTo(fd, messageId, `Not sent: ${(e as Error).message}`);
+  }
+  // Mark any sourcing request drafted with this email as sent.
+  const r = get<{ id: string }>("SELECT id FROM sourcing_requests WHERE inquiry_draft_id = ?", messageId);
+  if (r) run("UPDATE sourcing_requests SET status = CASE WHEN status = 'Draft' THEN 'Sent' ELSE status END, updated_at = datetime('now') WHERE id = ?", r.id);
+  await audit(user, "outlook.send_draft", r ? "sourcing" : "mailbox", r?.id ?? user.id, { to: c.to, cc: c.cc.length ? c.cc : undefined, bcc: c.bcc.length ? c.bcc : undefined });
+  backToList(fd, `Sent to ${c.to.join(", ")}${r ? ". The sourcing request is now marked Sent" : ""}.`);
 }
 
 export async function disconnectOutlook() {

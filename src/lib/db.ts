@@ -437,7 +437,7 @@ function migrate(db: DatabaseSync) {
 
   // Sourcing: the expiry the customer needs, and the supplier inquiry drafted in Outlook.
   const sc = cols("sourcing_requests");
-  for (const c of ["required_expiry", "inquiry_drafted_at", "inquiry_draft_link"]) if (!sc.includes(c)) db.exec(`ALTER TABLE sourcing_requests ADD COLUMN ${c} TEXT`);
+  for (const c of ["required_expiry", "inquiry_drafted_at", "inquiry_draft_link", "inquiry_draft_id"]) if (!sc.includes(c)) db.exec(`ALTER TABLE sourcing_requests ADD COLUMN ${c} TEXT`);
 
   // Organogram: who reports to whom.
   const uc = cols("users");

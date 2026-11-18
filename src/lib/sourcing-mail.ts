@@ -1,5 +1,7 @@
 import "server-only";
-import { get } from "./db";
+import { all, get } from "./db";
+import { scopeSql } from "./records";
+import { RESOURCES } from "./resources";
 import { getBranding } from "./branding";
 import type { SessionUser } from "./auth/session";
 
@@ -66,4 +68,15 @@ export function inquiryEmail(requestId: string, user: SessionUser): Inquiry | nu
 
   const subject = `Price & availability inquiry: ${r.p_name ?? "product"}${r.p_mid ? ` (${idLabel(r.p_type)} ${r.p_mid})` : ""}${qty ? `, qty ${qty}` : ""}`;
   return { to: r.s_email, toName: r.s_contact || supplierName, supplierId: r.supplier_id, supplierName, subject, text, missing };
+}
+
+/** Every supplier asked about the same product (on the same opportunity, when there is one) that this user can see. */
+export function sameProductRequests(requestId: string, user: SessionUser) {
+  const r = get<{ product_id: string | null; deal_id: string | null }>("SELECT product_id, deal_id FROM sourcing_requests WHERE id = ?", requestId);
+  if (!r?.product_id) return [];
+  const scope = scopeSql(RESOURCES.sourcing, user);
+  return all<{ id: string; number: string | null; supplier: string; status: string; offer_price: number | null; lead_time_days: number | null; inquiry_drafted_at: string | null }>(
+    `SELECT t.id, t.number, t.supplier, t.status, t.offer_price, t.lead_time_days, t.inquiry_drafted_at FROM sourcing_requests t
+      WHERE t.product_id = ? AND ${r.deal_id ? "t.deal_id = ?" : "t.deal_id IS NULL"} AND ${scope.sql} ORDER BY t.created_at`,
+    ...(r.deal_id ? [r.product_id, r.deal_id] : [r.product_id]), ...scope.params);
 }

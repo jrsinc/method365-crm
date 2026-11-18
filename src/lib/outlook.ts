@@ -187,7 +187,9 @@ const markPinned = <T extends MailSummary>(m: T): T => ({
 });
 export type Attachment = { id: string; name: string; contentType: string; size: number; isInline: boolean };
 export type MailFull = MailSummary & {
-  body?: { content: string; contentType?: string }; ccRecipients?: Addr[]; webLink?: string; sentDateTime?: string;
+  body?: { content: string; contentType?: string }; ccRecipients?: Addr[]; bccRecipients?: Addr[]; webLink?: string; sentDateTime?: string;
+  /** Still in Drafts, not sent yet. */
+  isDraft?: boolean;
   /** Filled by withAttachments: files to download, and the body with inline (cid:) images embedded. */
   files?: Attachment[]; html?: string;
 };
@@ -258,7 +260,7 @@ export async function listFolders(userId: string, fresh = false): Promise<Folder
 export const safeFolder = (f: string) => (/^[A-Za-z0-9_=+\-/.]{1,400}$/.test(f) ? f : "inbox");
 
 const LIST_FIELDS = "id,subject,bodyPreview,receivedDateTime,isRead,hasAttachments,conversationId,from,toRecipients,flag";
-const FULL_FIELDS = `${LIST_FIELDS},body,ccRecipients,webLink,sentDateTime`;
+const FULL_FIELDS = `${LIST_FIELDS},body,ccRecipients,bccRecipients,webLink,sentDateTime,isDraft`;
 
 export async function listMessages(userId: string, folder: string, opts: { unread?: boolean; flagged?: boolean; search?: string; page?: number } = {}) {
   const qs = new URLSearchParams({ $top: "50", $select: LIST_FIELDS, $expand: PIN_EXPAND });
@@ -280,6 +282,37 @@ export async function listMessages(userId: string, folder: string, opts: { unrea
 
 const toRecipients = (list: string[]) => list.map((address) => ({ emailAddress: { address } }));
 const asHtml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!).replace(/\r?\n/g, "<br>");
+
+export type Compose = { to: string[]; cc: string[]; bcc: string[]; subject: string; text: string };
+const composeBody = (c: Compose) => ({
+  subject: c.subject,
+  body: { contentType: "HTML", content: `<div style="font-family:Aptos,Calibri,Arial,sans-serif;font-size:11pt">${asHtml(c.text)}</div>` },
+  toRecipients: toRecipients(c.to), ccRecipients: toRecipients(c.cc), bccRecipients: toRecipients(c.bcc),
+});
+
+/** A new message in the user's own Drafts folder. Nothing is sent. */
+export async function createDraft(userId: string, c: Compose) {
+  const m = (await graphWrite(userId, "POST", "/me/messages", composeBody(c))) as { id?: string; webLink?: string } | null;
+  folderCache.delete(userId);
+  return { id: m?.id ?? null, webLink: m?.webLink ?? null };
+}
+
+/** Change a draft's recipients, subject and text. */
+export async function updateDraft(userId: string, messageId: string, c: Compose) {
+  return graphWrite(userId, "PATCH", `/me/messages/${encodeURIComponent(messageId)}`, composeBody(c));
+}
+
+/** Send a draft from the user's mailbox; Outlook moves it to Sent Items. */
+export async function sendDraft(userId: string, messageId: string) {
+  const r = await graphWrite(userId, "POST", `/me/messages/${encodeURIComponent(messageId)}/send`, {});
+  folderCache.delete(userId);
+  return r;
+}
+
+/** A draft as plain text, for editing in the CRM. */
+export async function draftForEdit(userId: string, messageId: string) {
+  return graph<MailFull>(userId, `/me/messages/${encodeURIComponent(messageId)}?$select=id,subject,body,toRecipients,ccRecipients,bccRecipients,isDraft,webLink`, true, false);
+}
 
 /** Reply, reply all or forward. Outlook adds the original message underneath, as it does in Outlook itself. */
 export async function respond(userId: string, messageId: string, mode: "reply" | "replyAll" | "forward", text: string, to: string[] = [], cc: string[] = []) {

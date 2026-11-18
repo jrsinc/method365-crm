@@ -2,15 +2,15 @@ import { redirect } from "next/navigation";
 import { moduleLevel } from "@/lib/roles";
 import Link from "next/link";
 import { requireUser, can } from "@/lib/auth/dal";
-import { MS, connection, listFolders, listMessages, mailActionsEnabled, matchSender, outlookConfigured, safeFolder, thread, type FolderNode, type MailFull, type MailSummary } from "@/lib/outlook";
+import { MS, connection, draftForEdit, listFolders, listMessages, mailActionsEnabled, matchSender, outlookConfigured, safeFolder, thread, type FolderNode, type MailFull, type MailSummary } from "@/lib/outlook";
 import { LocalTime, MailActions } from "@/components/mail-tools";
 import { EmailFrame } from "@/components/email-frame";
-import { accountFromEmail, caseFromEmail, contactFromEmail, disconnectOutlook, deleteEmail, flagEmail, leadFromEmail, logEmail, markEmailRead, moveEmail, pinEmail, respondToEmail, taskFromEmail } from "@/lib/actions/mail";
+import { accountFromEmail, caseFromEmail, contactFromEmail, disconnectOutlook, deleteEmail, flagEmail, leadFromEmail, logEmail, markEmailRead, moveEmail, pinEmail, respondToEmail, saveDraftEmail, sendDraftEmail, taskFromEmail } from "@/lib/actions/mail";
 import { RESOURCES } from "@/lib/resources";
 import { getRecord, refOptions } from "@/lib/records";
 import { relative } from "@/lib/format";
 import { str, type SP } from "@/lib/page-helpers";
-import { Badge, Button, Card, Input, LinkButton, Notice, Select, cx } from "@/components/ui";
+import { Badge, Button, Card, Input, Label, LinkButton, Notice, Select, Textarea, cx } from "@/components/ui";
 import { Icon } from "@/components/icons";
 
 export const metadata = { title: "Outlook" };
@@ -142,6 +142,8 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
   const sentLike = current?.wellKnown === "sentitems" || current?.wellKnown === "drafts" || current?.wellKnown === "outbox";
 
   const sel = view?.message;
+  // A draft (e.g. a supplier inquiry from Sourcing) opens as an editable email with Save and Send.
+  const draft = sel?.isDraft ? await draftForEdit(user.id, sel.id).catch(() => null) : null;
   const senderEmail = sel?.from?.emailAddress.address ?? "";
   const raw = senderEmail ? matchSender(senderEmail) : null;
   const match = raw && {
@@ -299,7 +301,9 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
                   {view.thread.length > 1 && <span className="shrink-0 pt-1 text-xs text-ink-3">{view.thread.length} messages</span>}
                   {sel!.webLink && <a href={sel!.webLink} target="_blank" rel="noreferrer" className="shrink-0 pt-1 text-xs text-accent hover:underline">Open in Outlook</a>}
                 </div>
-                <MailActions
+                {draft ? (
+                  <DraftEditor draft={draft} canSend={mailActionsEnabled(user.id)} returnTo={href({ msg: null })} listHref={href({ msg: null, m: null })} />
+                ) : <MailActions
                   enabled={mailActionsEnabled(user.id)}
                   returnTo={href({ msg: null })}
                   listHref={href({ msg: null, m: null })}
@@ -321,7 +325,7 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
                     move: moveEmail.bind(null, sel!.id),
                     del: deleteEmail.bind(null, sel!.id),
                   }}
-                />
+                />}
                 {/* Newest first, like Outlook's reading pane: the selected and latest messages open, earlier ones folded. */}
                 <ol className="space-y-2 p-3">
                   {[...view.thread].reverse().map((t, i) => (
@@ -336,5 +340,32 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
         </div>
       </div>
     </div>
+  );
+}
+
+const addrs = (l?: { emailAddress: { address?: string } }[]) => (l ?? []).map((r) => r.emailAddress.address).filter(Boolean).join(", ");
+
+/** Edit and send a draft without leaving the CRM. Send saves the changes first. */
+function DraftEditor({ draft, canSend, returnTo, listHref }: { draft: MailFull; canSend: boolean; returnTo: string; listHref: string }) {
+  return (
+    <form action={saveDraftEmail.bind(null, draft.id)} className="space-y-2 border-b border-line bg-warn-soft/40 px-4 py-3 text-sm">
+      <input type="hidden" name="returnTo" value={returnTo} />
+      <input type="hidden" name="listHref" value={listHref} />
+      <p className="text-xs font-semibold uppercase tracking-wide text-warn">Draft: not sent yet</p>
+      <div className="grid gap-2 sm:grid-cols-[64px_1fr] sm:items-center">
+        <Label htmlFor="d_to">To</Label><Input id="d_to" name="to" defaultValue={addrs(draft.toRecipients)} />
+        <Label htmlFor="d_cc">CC</Label><Input id="d_cc" name="cc" defaultValue={addrs(draft.ccRecipients)} placeholder="Optional; separate with commas" />
+        <Label htmlFor="d_bcc">BCC</Label><Input id="d_bcc" name="bcc" defaultValue={addrs(draft.bccRecipients)} placeholder="Optional; hidden from the other recipients" />
+        <Label htmlFor="d_subject">Subject</Label><Input id="d_subject" name="subject" defaultValue={draft.subject ?? ""} />
+      </div>
+      <Textarea name="body" rows={12} defaultValue={draft.body?.content ?? ""} aria-label="Message" />
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" formAction={sendDraftEmail.bind(null, draft.id)} variant="primary" disabled={!canSend}
+          title={canSend ? undefined : "Needs Mail.Send approved by your Microsoft 365 admin"}><Icon name="send" size={14} />Send</Button>
+        <Button type="submit">Save draft</Button>
+        <Button type="submit" formAction={deleteEmail.bind(null, draft.id)} variant="danger" formNoValidate>Discard draft</Button>
+        <span className="text-xs text-ink-3">Sent from your own mailbox; Outlook keeps a copy in Sent Items.</span>
+      </div>
+    </form>
   );
 }

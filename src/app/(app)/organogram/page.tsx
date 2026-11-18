@@ -17,6 +17,7 @@ type Person = {
 /** Classic org-chart connectors: a line down from each manager, across the team, and down to each person. */
 const CSS = `
 .org ul{display:flex;justify-content:center;padding-top:22px;position:relative;margin:0}
+.org > ul{width:max-content;min-width:100%}
 .org li{list-style:none;position:relative;padding:22px 6px 0;display:flex;flex-direction:column;align-items:center}
 .org li::before,.org li::after{content:'';position:absolute;top:0;right:50%;width:50%;height:22px;border-top:1.5px solid var(--line)}
 .org li::after{right:auto;left:50%;border-left:1.5px solid var(--line)}

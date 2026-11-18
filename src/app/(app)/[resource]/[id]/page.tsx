@@ -20,7 +20,7 @@ import { DEAL_STAGES, QUOTE_STATUSES } from "@/lib/config";
 import { formOptions, TITLE_FIELDS } from "@/lib/page-helpers";
 import type { SessionUser } from "@/lib/auth/session";
 import type { Row } from "@/lib/db";
-import { Badge, Card, Input, Label, LinkButton, Notice, PageHeader, Select, cx } from "@/components/ui";
+import { Badge, Card, Input, Label, LinkButton, Notice, PageHeader, Select, Textarea, cx } from "@/components/ui";
 import { Submit } from "@/components/submit";
 import { RecordForm } from "@/components/record-form";
 import { EmailFrame } from "@/components/email-frame";
@@ -31,7 +31,7 @@ import { addDealLine, addNewProductLine, removeDealLine } from "@/lib/actions/de
 import { PRODUCT_TYPES } from "@/lib/config";
 import { GOODS_SQL, LINE_GOODS_SQL, type GoodsInfo } from "@/lib/goods";
 import { headers } from "next/headers";
-import { inquiryEmail } from "@/lib/sourcing-mail";
+import { inquiryEmail, sameProductRequests } from "@/lib/sourcing-mail";
 import { draftSourcingInquiry } from "@/lib/actions/sourcing";
 import { connection as outlookConnection, mailActionsEnabled } from "@/lib/outlook";
 
@@ -42,8 +42,10 @@ export async function generateMetadata({ params }: { params: Promise<{ resource:
 
 export default async function DetailPage({ params, searchParams }: { params: Promise<{ resource: string; id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { resource, id } = await params;
-  const m = (await searchParams).msg;
+  const sq = await searchParams;
+  const m = sq.msg;
   const msg = Array.isArray(m) ? m[0] : m;
+  const draftParam = typeof sq.draft === "string" ? sq.draft : "";
   const def = getResource(resource);
   if (!def) notFound();
   const user = await requireModule(moduleOf(def.key));
@@ -76,7 +78,7 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
           {def.key === "quotes" && editable && <StageBar row={row} resource="quotes" field="status" options={QUOTE_STATUSES} noun="quote" />}
           {def.key === "quotes" && <DiscountPanel row={row} user={user} />}
           {def.key === "quotes" && <SalesOrderPanel row={row} editable={editable} />}
-          {def.key === "sourcing" && <SourcingInquiryPanel row={row} user={user} />}
+          {def.key === "sourcing" && <SourcingInquiryPanel row={row} user={user} draftId={draftParam} />}
           <Card title="Details">
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               {def.fields.map((f) => {
@@ -178,51 +180,96 @@ function DiscountPanel({ row, user }: { row: Row; user: SessionUser }) {
 }
 
 /** Won/Accepted quote → one "Create sales order" button. Goes to the ERP once one is connected (lib/erp.ts). */
-/** Supplier inquiry email for a sourcing request: preview, then a draft in the user's own Outlook to review and send. */
-function SourcingInquiryPanel({ row, user }: { row: Row; user: SessionUser }) {
+/**
+ * Supplier inquiry email for a sourcing request: an editable email (To, CC, BCC, subject, text) that goes into
+ * the user's own Outlook Drafts, plus every supplier already asked about the same product.
+ */
+function SourcingInquiryPanel({ row, user, draftId }: { row: Row; user: SessionUser; draftId: string }) {
   const id = row.id as string;
   const mail = inquiryEmail(id, user);
   if (!mail) return null;
   const connected = !!outlookConnection(user.id);
   const canDraft = connected && mailActionsEnabled(user.id);
-  const mailto = mail.to
-    ? `mailto:${encodeURIComponent(mail.to)}?subject=${encodeURIComponent(mail.subject)}&body=${encodeURIComponent(mail.text)}`
-    : null;
+  const lastDraft = draftId || (row.inquiry_draft_id as string | null);
+  const others = sameProductRequests(id, user);
+  const askMore = `/sourcing/ask?${new URLSearchParams({
+    ...(row.product_id ? { product_id: String(row.product_id) } : {}), ...(row.deal_id ? { deal_id: String(row.deal_id) } : {}),
+    ...(row.quantity ? { quantity: String(row.quantity) } : {}), ...(row.required_expiry ? { required_expiry: String(row.required_expiry) } : {}),
+  })}`;
   return (
-    <Card title="Supplier inquiry email">
-      <div className="space-y-3 text-sm">
-        {row.inquiry_drafted_at ? (
-          <Notice tone="green">
-            Draft created in your Outlook on {dateTime(row.inquiry_drafted_at)}.{" "}
-            {row.inquiry_draft_link ? <a href={String(row.inquiry_draft_link)} target="_blank" rel="noreferrer" className="font-medium underline">Open the draft in Outlook</a> : "Open Outlook → Drafts to review and send it."}
-          </Notice>
-        ) : null}
-        {mail.missing.length > 0 && (
-          <Notice tone="amber">
-            To draft the email, add {mail.missing.join(", ")}.{" "}
-            {!mail.to && mail.supplierId && <Link href={`/suppliers/${mail.supplierId}/edit`} className="font-medium underline">Edit supplier</Link>}
-          </Notice>
-        )}
-        <dl className="grid grid-cols-[70px_1fr] gap-x-3 gap-y-1">
-          <dt className="text-ink-3">To</dt><dd className="break-all">{mail.to ? `${mail.toName ? `${mail.toName} ` : ""}<${mail.to}>` : "—"}</dd>
-          <dt className="text-ink-3">Subject</dt><dd>{mail.subject}</dd>
-        </dl>
-        <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-surface-2 p-3 font-sans text-sm">{mail.text}</pre>
-        <div className="flex flex-wrap items-center gap-2">
-          {mail.missing.length === 0 && canDraft && (
-            <form action={draftSourcingInquiry.bind(null, id)}>
-              <Submit variant="primary">{row.inquiry_drafted_at ? "Create another draft in Outlook" : "Create draft in Outlook"}</Submit>
-            </form>
+    <>
+      <Card title="Supplier inquiry email">
+        <div className="space-y-3 text-sm">
+          {row.inquiry_drafted_at ? (
+            <Notice tone="green">
+              Draft saved in your Outlook on {dateTime(row.inquiry_drafted_at)}.{" "}
+              {lastDraft && <Link href={`/outlook?f=drafts&m=${encodeURIComponent(lastDraft)}`} className="font-medium underline">Open the draft in the CRM&apos;s Outlook</Link>}
+              {lastDraft && row.inquiry_draft_link ? " · " : null}
+              {row.inquiry_draft_link ? <a href={String(row.inquiry_draft_link)} target="_blank" rel="noreferrer" className="font-medium underline">Open in Outlook</a> : null}
+            </Notice>
+          ) : null}
+          {mail.missing.filter((m) => m !== "the supplier's email").length > 0 && (
+            <Notice tone="amber">For a complete email, add {mail.missing.filter((m) => m !== "the supplier's email").join(", ")} to this request.</Notice>
           )}
-          {mail.missing.length === 0 && connected && !canDraft && (
-            <a href="/api/outlook/connect?add=send" className="inline-flex h-9 items-center rounded-md bg-accent px-3 font-medium text-accent-ink hover:opacity-90">Allow drafts in Outlook</a>
+          {!mail.to && (
+            <Notice tone="amber">
+              The supplier has no email yet: type it in To, or{" "}
+              {mail.supplierId ? <Link href={`/suppliers/${mail.supplierId}/edit`} className="font-medium underline">add it to the supplier</Link> : "add it to the supplier"}.
+            </Notice>
           )}
-          {mail.missing.length === 0 && !connected && <LinkButton href="/outlook" variant="primary">Connect Outlook to draft</LinkButton>}
-          {mailto && <a href={mailto} className="inline-flex h-9 items-center rounded-md border border-line px-3 font-medium hover:bg-surface-2">Open in my email app</a>}
+          <form action={draftSourcingInquiry.bind(null, id)} className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-[70px_1fr] sm:items-center">
+              <Label htmlFor="iq_to">To</Label>
+              <Input id="iq_to" name="to" defaultValue={mail.to ?? ""} placeholder="supplier@example.com" />
+              <Label htmlFor="iq_cc">CC</Label>
+              <Input id="iq_cc" name="cc" placeholder="Optional; separate several with commas" />
+              <Label htmlFor="iq_bcc">BCC</Label>
+              <Input id="iq_bcc" name="bcc" placeholder="Optional; hidden from the other recipients" />
+              <Label htmlFor="iq_subject">Subject</Label>
+              <Input id="iq_subject" name="subject" defaultValue={mail.subject} />
+            </div>
+            <div>
+              <Label htmlFor="iq_body">Message</Label>
+              <Textarea id="iq_body" name="body" rows={14} defaultValue={mail.text} className="font-sans" />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canDraft && <Submit variant="primary">{row.inquiry_drafted_at ? "Save another draft in Outlook" : "Save draft in Outlook"}</Submit>}
+              {connected && !canDraft && (
+                <a href="/api/outlook/connect?add=send" className="inline-flex h-9 items-center rounded-md bg-accent px-3 font-medium text-accent-ink hover:opacity-90">Allow drafts in Outlook</a>
+              )}
+              {!connected && <LinkButton href="/outlook" variant="primary">Connect Outlook to draft</LinkButton>}
+              <LinkButton href={askMore}>Ask more suppliers for this product</LinkButton>
+            </div>
+          </form>
+          <p className="text-xs text-ink-3">Nothing is sent from here: the draft goes to your Outlook Drafts. Open it in the CRM&apos;s Outlook page (Drafts) to check, change and send it. Suppliers on BCC don&apos;t see each other.</p>
         </div>
-        <p className="text-xs text-ink-3">Nothing is sent from the CRM: the draft lands in your Outlook Drafts folder for you to check and send. Wording comes from the supplier, product, quantity and required expiry on this request.</p>
-      </div>
-    </Card>
+      </Card>
+      {others.length > 1 && (
+        <Card title={`Suppliers asked for this product (${others.length})`} pad={false}
+          actions={<Link href={askMore} className="text-xs text-accent hover:underline">Ask more suppliers</Link>}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-line bg-surface-2 text-left text-xs text-ink-2">
+                <th className="px-3 py-2 font-medium">Supplier</th><th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Email</th><th className="px-3 py-2 text-right font-medium">Offer (unit)</th>
+                <th className="px-3 py-2 text-right font-medium">Lead time</th>
+              </tr></thead>
+              <tbody>
+                {others.map((o) => (
+                  <tr key={o.id} className={cx("border-b border-line last:border-0", o.id === id && "bg-accent-soft/50")}>
+                    <td className="px-3 py-2"><Link href={`/sourcing/${o.id}`} className="font-medium hover:underline">{o.supplier}</Link>{o.id === id && <span className="ml-1 text-xs text-ink-3">(this one)</span>}</td>
+                    <td className="px-3 py-2"><Badge>{o.status}</Badge></td>
+                    <td className="px-3 py-2 text-ink-2">{o.inquiry_drafted_at ? "Drafted" : "Not yet"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{o.offer_price != null ? money(o.offer_price) : "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{o.lead_time_days != null ? `${o.lead_time_days} days` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </>
   );
 }
 
@@ -481,11 +528,10 @@ function OpportunityLines({ row, editable, user }: { row: Row; editable: boolean
        FROM deal_lines l LEFT JOIN products p ON p.id = l.product_id WHERE l.deal_id = ? ORDER BY l.position`, id);
   const products = all<{ id: string; name: string; sku: string | null; status: string; unit_price: number }>(
     "SELECT id, name, sku, status, unit_price FROM products ORDER BY name");
-  const back = encodeURIComponent(`/opportunities/${id}`);
   return (
     <Card title={`What the customer asked for (${lines.length})`} pad={false}>
       <DealLines
-        lines={lines.map((l) => ({ ...l, sourcing_href: `/sourcing/new?deal_id=${id}${l.product_id ? `&product_id=${l.product_id}` : ""}&quantity=${l.quantity}&returnTo=${back}` }))}
+        lines={lines.map((l) => ({ ...l, sourcing_href: `/sourcing/ask?deal_id=${id}${l.product_id ? `&product_id=${l.product_id}` : ""}&quantity=${l.quantity}` }))}
         products={products}
         editable={editable}
         productTypes={PRODUCT_TYPES}
