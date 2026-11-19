@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useEffect, useMemo, useState } from "react";
-import { NEW_REF, RESOURCES, type Field, type ResourceKey } from "@/lib/resources";
+import { NEW_REF, OTHER_REF, RESOURCES, type Field, type ResourceKey } from "@/lib/resources";
 import type { FormState } from "@/lib/actions/records";
 import { Input, Label, Notice, Select, Textarea, LinkButton, cx } from "./ui";
 import { Submit } from "./submit";
@@ -190,7 +190,39 @@ function DateTimeLocal({ common, value, required }: {
 }
 
 /** A dropdown with "+ Add new option…" at the bottom; the typed option is kept for everyone's future use. */
-function PickSelect({ common, field, value, options, newValue, newError, canAdd }: {
+function PickSelect({ common, field, value, options, newValue, newError, canAdd, otherValue = "" }: {
+  common: { id: string; name: string; "aria-invalid"?: boolean; "aria-describedby"?: string };
+  field: Field; value: string; options: string[]; newValue: string; newError?: string; canAdd: boolean; otherValue?: string;
+}) {
+  if (field.other) return <OtherSelect common={common} field={field} value={value} options={options} otherValue={otherValue} />;
+  return <AddableSelect common={common} field={field} value={value} options={options} newValue={newValue} newError={newError} canAdd={canAdd} />;
+}
+
+/** A dropdown with "Other…": choosing it shows a box to type a value that isn't in the list. */
+function OtherSelect({ common, field, value, options, otherValue }: {
+  common: { id: string; name: string; "aria-invalid"?: boolean; "aria-describedby"?: string };
+  field: Field; value: string; options: string[]; otherValue: string;
+}) {
+  // A saved value that isn't in the list (or "Other…" picked before a failed save) opens with the box filled in.
+  const listed = options.find((o) => o.toLowerCase() === value.toLowerCase());
+  const [sel, setSel] = useState(value === OTHER_REF ? OTHER_REF : listed ?? (value ? OTHER_REF : ""));
+  const typed = value === OTHER_REF ? otherValue : listed ? "" : value;
+  return (
+    <div className="space-y-1.5">
+      <Select {...common} value={sel} onChange={(e) => setSel(e.target.value)}>
+        <option value="">{field.required ? "Choose…" : "—"}</option>
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        <option value={OTHER_REF}>Other (type your own)…</option>
+      </Select>
+      {sel === OTHER_REF && (
+        <Input name={`${field.name}__other`} defaultValue={typed} placeholder={`Type the ${field.label.toLowerCase()}`} autoFocus={!typed}
+          maxLength={200} aria-label={`Other ${field.label.toLowerCase()}`} />
+      )}
+    </div>
+  );
+}
+
+function AddableSelect({ common, field, value, options, newValue, newError, canAdd }: {
   common: { id: string; name: string; "aria-invalid"?: boolean; "aria-describedby"?: string };
   field: Field; value: string; options: string[]; newValue: string; newError?: string; canAdd: boolean;
 }) {
@@ -333,7 +365,8 @@ export function RecordForm({
               control = (
                 <PickSelect common={common} field={f} value={v(f.name) || String(f.default ?? "")}
                   options={options.picklists?.[f.name] ?? f.options!} canAdd={!!options.extendable?.includes(f.name)}
-                  newValue={state.values?.[`${f.name}__new`] ?? ""} newError={state.errors?.[`${f.name}__new`]} />
+                  newValue={state.values?.[`${f.name}__new`] ?? ""} newError={state.errors?.[`${f.name}__new`]}
+                  otherValue={state.values?.[`${f.name}__other`] ?? ""} />
               );
               break;
             case "user":

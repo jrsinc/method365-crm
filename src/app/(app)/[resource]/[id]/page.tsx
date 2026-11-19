@@ -4,7 +4,7 @@ import { requireModule, can } from "@/lib/auth/dal";
 import { moduleOf } from "@/lib/roles";
 import { getResource, RESOURCES, type ResourceDef } from "@/lib/resources";
 import { canCreate, canEdit, getRecord, listRecords, refOptions, scopeSql } from "@/lib/records";
-import { money } from "@/lib/format";
+import { date, money, money2 } from "@/lib/format";
 import { linkExistingQuote } from "@/lib/actions/deal-lines";
 import { quickUpdateForm, saveRecord } from "@/lib/actions/records";
 import { PasswordForm } from "@/components/password-prompt";
@@ -16,7 +16,7 @@ import { QuickStatus } from "@/components/quick-status";
 import { dateTime, fieldText, relative, FIELD_LABELS } from "@/lib/format";
 import { all, get } from "@/lib/db";
 import { baseCurrency } from "@/lib/settings";
-import { DEAL_STAGES, QUOTE_STATUSES } from "@/lib/config";
+import { APP_NAME, DEAL_STAGES, QUOTE_STATUSES } from "@/lib/config";
 import { formOptions, TITLE_FIELDS } from "@/lib/page-helpers";
 import type { SessionUser } from "@/lib/auth/session";
 import type { Row } from "@/lib/db";
@@ -28,12 +28,15 @@ import { AuditTrail } from "@/components/audit-trail";
 import { QuoteItems } from "@/components/quote-items";
 import { DealLines } from "@/components/deal-lines";
 import { addDealLine, addNewProductLine, removeDealLine } from "@/lib/actions/deal-lines";
-import { PRODUCT_TYPES } from "@/lib/config";
+import { DOSAGE_FORMS, PRODUCT_TYPES } from "@/lib/config";
 import { GOODS_SQL, LINE_GOODS_SQL, type GoodsInfo } from "@/lib/goods";
 import { headers } from "next/headers";
 import { inquiryEmail, sameProductRequests } from "@/lib/sourcing-mail";
 import { draftSourcingInquiry } from "@/lib/actions/sourcing";
 import { connection as outlookConnection, mailActionsEnabled } from "@/lib/outlook";
+import { QuoteEmailForm } from "@/components/quote-email";
+import { draftQuoteEmail } from "@/lib/actions/quote-mail";
+import { getBranding } from "@/lib/branding";
 
 export async function generateMetadata({ params }: { params: Promise<{ resource: string; id: string }> }) {
   const def = getResource((await params).resource);
@@ -65,7 +68,8 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
         subtitle={[!String(row.__title).includes(String(row.number)) && row.number, related && `${related.singular}: ${related.title}`].filter(Boolean).join(" · ") || undefined}
         actions={
           <>
-            {def.key === "quotes" && <LinkButton href={`/print/quotes/${id}`} target="_blank">Print / PDF</LinkButton>}
+            {def.key === "quotes" && <LinkButton href="#email">Email to customer</LinkButton>}
+            {def.key === "quotes" && <LinkButton href={`/print/quotes/${id}`} target="_blank">PDF</LinkButton>}
             {editable && <LinkButton href={`${self}/edit`} variant="primary">Edit</LinkButton>}
           </>
         }
@@ -109,6 +113,7 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
 
           {def.key === "opportunities" && <OpportunityLines row={row} editable={editable} user={user} />}
           {def.key === "quotes" && <QuoteSection row={row} editable={editable} />}
+          {def.key === "quotes" && <QuoteEmailCard row={row} user={user} />}
           {def.key === "forms" && <FormEmbed row={row} />}
           {def.key === "activities" && row.body_html ? (
             <Card title="Email as in Outlook"><EmailFrame html={String(row.body_html)} /></Card>
@@ -524,10 +529,11 @@ function ConvertPanel({ row, editable, user }: { row: Row; editable: boolean; us
 function OpportunityLines({ row, editable, user }: { row: Row; editable: boolean; user: SessionUser }) {
   const id = row.id as string;
   const lines = all<{ id: string; product_id: string | null; description: string; quantity: number; target_price: number | null; status: string | null; sku: string | null } & GoodsInfo>(
-    `SELECT l.id, l.product_id, l.description, l.quantity, l.target_price, p.status, p.sku, ${GOODS_SQL}
+    `SELECT l.id, l.product_id, l.description, l.quantity, l.target_price, p.status, p.sku, p.dosage_form, p.pack_size, p.material_id_type, p.material_id, p.manufacturer, p.hts_code, p.uom, p.remark,
+            COALESCE(l.lot_number, p.lot_number) AS lot_number, COALESCE(l.expiry, p.expiry) AS expiry
        FROM deal_lines l LEFT JOIN products p ON p.id = l.product_id WHERE l.deal_id = ? ORDER BY l.position`, id);
-  const products = all<{ id: string; name: string; sku: string | null; status: string; unit_price: number }>(
-    "SELECT id, name, sku, status, unit_price FROM products ORDER BY name");
+  const products = all<{ id: string; name: string; sku: string | null; status: string; unit_price: number; lot_number: string | null; expiry: string | null; material_id: string | null }>(
+    "SELECT id, name, sku, status, unit_price, lot_number, expiry, material_id FROM products ORDER BY name");
   return (
     <Card title={`What the customer asked for (${lines.length})`} pad={false}>
       <DealLines
@@ -535,6 +541,7 @@ function OpportunityLines({ row, editable, user }: { row: Row; editable: boolean
         products={products}
         editable={editable}
         productTypes={PRODUCT_TYPES}
+        dosageForms={DOSAGE_FORMS}
         canManageProducts={can(user, "products.manage")}
         addAction={addDealLine.bind(null, id)}
         addNewAction={addNewProductLine.bind(null, id)}
@@ -542,6 +549,39 @@ function OpportunityLines({ row, editable, user }: { row: Row; editable: boolean
         currency={(row.currency as string) || baseCurrency().code}
       />
     </Card>
+  );
+}
+
+/** Email the quote to the customer: a draft in the user's Outlook with the quote PDF attached. */
+function QuoteEmailCard({ row, user }: { row: Row; user: SessionUser }) {
+  const id = row.id as string;
+  const contact = row.contact_id ? get<{ first_name: string; last_name: string | null; email: string | null }>("SELECT first_name, last_name, email FROM contacts WHERE id = ?", row.contact_id as string) : undefined;
+  const account = row.account_id ? get<{ name: string; email: string | null }>("SELECT name, email FROM accounts WHERE id = ?", row.account_id as string) : undefined;
+  const brand = getBranding();
+  const company = brand.company_name || APP_NAME;
+  const number = String(row.number ?? "");
+  const cur = (row.currency as string) || baseCurrency().code;
+  const lines = [
+    `Dear ${contact?.first_name || "Sir/Madam"},`,
+    "",
+    `Thank you for your enquiry. Please find attached our quote ${number}${account ? ` for ${account.name}` : ""}, for a total of ${money2(row.total, cur)}${row.valid_until ? `, valid until ${date(row.valid_until)}` : ""}.`,
+    "",
+    "Please let us know if you have any questions or would like to go ahead.",
+    "",
+    "Kind regards,",
+    user.name,
+  ];
+  return (
+    <div id="email" className="scroll-mt-20"><Card title="Email to customer">
+      <QuoteEmailForm
+        quoteId={id}
+        action={draftQuoteEmail.bind(null, id)}
+        to={contact?.email || account?.email || ""}
+        subject={`Quote ${number} from ${company}`}
+        body={lines.join("\n")}
+        canDraft={!!outlookConnection(user.id) && mailActionsEnabled(user.id)}
+      />
+    </Card></div>
   );
 }
 

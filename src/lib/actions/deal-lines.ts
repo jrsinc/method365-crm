@@ -48,11 +48,12 @@ async function editableDeal(dealId: string, fd?: FormData) {
 }
 const WRONG = "That password isn't right. Nothing was changed.";
 
-function addLine(dealId: string, productId: string, description: string, qty: number, price: number | null) {
+function addLine(dealId: string, productId: string, description: string, qty: number, price: number | null, lot: string | null = null, expiry: string | null = null) {
   const pos = get<{ p: number }>("SELECT COALESCE(MAX(position), -1) + 1 p FROM deal_lines WHERE deal_id = ?", dealId)!.p;
-  run("INSERT INTO deal_lines (id, deal_id, product_id, description, quantity, target_price, position) VALUES (?,?,?,?,?,?,?)",
-    newId(), dealId, productId, description, qty, price, pos);
+  run("INSERT INTO deal_lines (id, deal_id, product_id, description, quantity, target_price, position, lot_number, expiry) VALUES (?,?,?,?,?,?,?,?,?)",
+    newId(), dealId, productId, description, qty, price, pos, lot, expiry);
 }
+const text = (v: FormDataEntryValue | null, max = 100) => String(v ?? "").trim().slice(0, max) || null;
 
 const num = (v: FormDataEntryValue | null) => {
   const s = String(v ?? "").trim();
@@ -67,13 +68,16 @@ export async function addDealLine(dealId: string, _prev: LineState, fd: FormData
   if (ctx === "password") return { error: WRONG };
   if (!ctx) return { error: "You can't edit this opportunity." };
   const productId = String(fd.get("product_id") ?? "");
-  const product = get<{ id: string; name: string; unit_price: number }>("SELECT id, name, unit_price FROM products WHERE id = ?", productId);
+  const product = get<{ id: string; name: string; unit_price: number; lot_number: string | null; expiry: string | null }>("SELECT id, name, unit_price, lot_number, expiry FROM products WHERE id = ?", productId);
   if (!product) return { error: "Choose a product from the Product Master." };
   const qty = num(fd.get("quantity")) ?? 1;
   const price = num(fd.get("target_price"));
   if (Number.isNaN(qty) || qty <= 0) return { error: "Quantity must be more than zero." };
-  if (Number.isNaN(price)) return { error: "Target price must be a number." };
-  addLine(dealId, product.id, product.name, qty, price ?? product.unit_price);
+  if (Number.isNaN(price)) return { error: "Unit price must be a number." };
+  // Lot and expiry are kept on the line only when they differ from the product's.
+  const lot = text(fd.get("lot_number")), exp = text(fd.get("expiry"), 50);
+  addLine(dealId, product.id, product.name, qty, price ?? product.unit_price,
+    lot && lot !== product.lot_number ? lot : null, exp && exp !== product.expiry ? exp : null);
   await audit(ctx.user, "update", "opportunities", dealId, { line_added: product.name });
   revalidatePath(`/opportunities/${dealId}`);
   return { ok: `${product.name} added.` };
@@ -92,6 +96,8 @@ export async function addNewProductLine(dealId: string, _prev: LineState, fd: Fo
   const sku = String(fd.get("sku") ?? "").trim().slice(0, 60) || null;
   const type = String(fd.get("type") ?? "Product");
   const manufacturer = String(fd.get("manufacturer") ?? "").trim().slice(0, 120) || null;
+  const dosage = text(fd.get("dosage_form")), pack = text(fd.get("pack_size")), uom = text(fd.get("uom"), 30);
+  const lot = text(fd.get("lot_number")), exp = text(fd.get("expiry"), 50);
   const price = num(fd.get("unit_price"));
   const qty = num(fd.get("quantity")) ?? 1;
   if (!name) return { error: "Give the new product a name." };
@@ -103,10 +109,12 @@ export async function addNewProductLine(dealId: string, _prev: LineState, fd: Fo
   const productId = newId();
   tx(() => {
     run(
-      `INSERT INTO products (id, sku, name, category, type, family, manufacturer, status, unit_price, currency, active, description)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO products (id, sku, name, category, type, family, manufacturer, status, unit_price, currency, active, description,
+         dosage_form, pack_size, uom, lot_number, expiry)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       productId, sku, name, null, type, null, manufacturer, status, price ?? 0, "USD", manager ? 1 : 0,
       `Added from opportunity ${String(ctx.deal.__title)}`,
+      dosage, pack, uom, lot, exp,
     );
     addLine(dealId, productId, name, qty, price);
     if (!manager) {

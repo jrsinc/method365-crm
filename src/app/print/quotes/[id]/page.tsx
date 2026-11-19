@@ -35,7 +35,13 @@ export default async function PrintQuote({ params }: { params: Promise<{ id: str
   const tax = (subtotal - disc) * (Number(q.tax_pct) || 0) / 100;
   return (
     <main className="mx-auto max-w-3xl bg-white p-8 text-[#18181a] print:p-0">
-      <div className="no-print mb-6 flex justify-end"><PrintButton /></div>
+      <div className="no-print mb-6 flex items-center justify-end gap-3">
+        <p className="mr-auto text-xs text-[#7b7a74]">The PDF is an image of the quote, so its text can&apos;t be copied.</p>
+        <PrintButton fileName={`Quote-${String(q.number ?? id).replace(/[^\w.-]+/g, "_")}.pdf`} />
+      </div>
+      {/* Printing from the browser would make a PDF with copyable text, so only the Download PDF version is allowed. */}
+      <p className="hidden text-center text-sm print:block">Use the Download PDF button to save or print this quote.</p>
+      <div id="doc" className="select-none bg-white px-3 py-2 print:hidden">
       <header className="flex items-start justify-between gap-6 border-b border-[#e3e2dd] pb-6">
         <div className="min-w-0">
           {/* The customer company's own logo and details (Company branding). */}
@@ -86,6 +92,7 @@ export default async function PrintQuote({ params }: { params: Promise<{ id: str
           {PREPARED_BY}
         </p>
       </footer>
+      </div>
     </main>
   );
 }

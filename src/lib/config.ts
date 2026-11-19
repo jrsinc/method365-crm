@@ -111,5 +111,16 @@ export const TASK_PRIORITIES = ["Low", "Normal", "High", "Urgent"];
 /** A task's type. "General" and "Other" tasks don't need to be linked to a customer record. */
 export const TASK_CATEGORIES = ["General", "Follow-up", "Call", "Meeting", "Email", "Other"];
 export const ACTIVITY_TYPES = ["Call", "Email", "Meeting", "Note"];
+/** A product's dosage form. "Other…" in the dropdown lets people type their own. */
+export const DOSAGE_FORMS = [
+  "Tablet", "Film-coated tablet", "Capsule", "Oral solution", "Oral suspension", "Syrup", "Powder", "Granules",
+  "Injection", "Solution for injection", "Powder for injection", "Pre-filled syringe", "Pre-filled pen", "Vial", "Infusion",
+  "Cream", "Ointment", "Gel", "Eye drops", "Inhaler", "Nasal spray", "Patch", "Suppository",
+];
+/** An opportunity's next step. "Other…" in the dropdown lets people type their own. */
+export const NEXT_STEPS = [
+  "Send quote", "Send proposal", "Send samples", "Follow-up call", "Schedule meeting", "Schedule demo",
+  "Pricing review", "Negotiate terms", "Legal review", "Await purchase order", "Close the deal",
+];
 export const QUOTE_STATUSES = ["Draft", "Submitted", "Approved", "Issued", "Pending Feedback", "Accepted", "Won", "Rejected", "Expired", "Withdrawn"];
 export const WEB_FORM_FIELDS = ["first_name", "last_name", "email", "phone", "company", "title", "message"];

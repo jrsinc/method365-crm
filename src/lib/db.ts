@@ -428,7 +428,13 @@ function migrate(db: DatabaseSync) {
 
   // Products: unique material ID (NDC / EU MA / other), lot, expiry, HTS code, unit and remark.
   const pc = cols("products");
-  for (const c of ["material_id_type", "material_id", "lot_number", "expiry", "hts_code", "uom", "remark"]) if (!pc.includes(c)) db.exec(`ALTER TABLE products ADD COLUMN ${c} TEXT`);
+  for (const c of ["material_id_type", "material_id", "lot_number", "expiry", "hts_code", "uom", "remark", "dosage_form", "pack_size"]) if (!pc.includes(c)) db.exec(`ALTER TABLE products ADD COLUMN ${c} TEXT`);
+  // Each user's email signature (added to emails the CRM writes), and the Outlook draft made for a quote.
+  if (!cols("users").includes("email_signature")) db.exec("ALTER TABLE users ADD COLUMN email_signature TEXT");
+  if (!cols("quotes").includes("email_draft_id")) db.exec("ALTER TABLE quotes ADD COLUMN email_draft_id TEXT");
+  // Opportunity lines keep their own lot and expiry (NULL = use the product's).
+  const dlc = cols("deal_lines");
+  for (const c of ["lot_number", "expiry"]) if (!dlc.includes(c)) db.exec(`ALTER TABLE deal_lines ADD COLUMN ${c} TEXT`);
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_products_material_id ON products(material_id COLLATE NOCASE) WHERE material_id IS NOT NULL");
   // Each quote line keeps its own goods details (MFG / LOT / EXP / HTS / unit can differ per quote);
   // material ID is copied from the product. NULL = older line, falls back to the product's values.

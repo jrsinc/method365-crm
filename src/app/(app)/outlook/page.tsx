@@ -5,12 +5,13 @@ import { requireUser, can } from "@/lib/auth/dal";
 import { MS, connection, draftForEdit, listFolders, listMessages, mailActionsEnabled, matchSender, outlookConfigured, safeFolder, thread, type FolderNode, type MailFull, type MailSummary } from "@/lib/outlook";
 import { LocalTime, MailActions } from "@/components/mail-tools";
 import { EmailFrame } from "@/components/email-frame";
-import { accountFromEmail, caseFromEmail, contactFromEmail, disconnectOutlook, deleteEmail, flagEmail, leadFromEmail, logEmail, markEmailRead, moveEmail, pinEmail, respondToEmail, saveDraftEmail, sendDraftEmail, taskFromEmail } from "@/lib/actions/mail";
+import { accountFromEmail, caseFromEmail, contactFromEmail, disconnectOutlook, deleteEmail, flagEmail, leadFromEmail, logEmail, markEmailRead, moveEmail, opportunityFromEmail, pinEmail, respondToEmail, saveDraftEmail, sendDraftEmail, taskFromEmail } from "@/lib/actions/mail";
+import { HtmlEditor } from "@/components/html-editor";
 import { RESOURCES } from "@/lib/resources";
 import { getRecord, refOptions } from "@/lib/records";
 import { relative } from "@/lib/format";
 import { str, type SP } from "@/lib/page-helpers";
-import { Badge, Button, Card, Input, Label, LinkButton, Notice, Select, Textarea, cx } from "@/components/ui";
+import { Badge, Button, Card, Input, Label, LinkButton, Notice, Select, cx } from "@/components/ui";
 import { Icon } from "@/components/icons";
 
 export const metadata = { title: "Outlook" };
@@ -152,13 +153,25 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
     account: raw.account && getRecord(RESOURCES.accounts, user, raw.account.id) ? raw.account : undefined,
   };
   const writable = can(user, "records.write");
-  const targets = sel && writable ? [
+  // Where the email can be logged: the sender's own records first, then everything else this user can see.
+  const suggested = sel && writable ? [
     ...(match?.contact ? [{ v: `contacts:${match.contact.id}`, l: `Contact · ${match.contact.name}` }] : []),
     ...(match?.lead ? [{ v: `leads:${match.lead.id}`, l: `Lead · ${match.lead.name}` }] : []),
     ...(match?.account ? [{ v: `accounts:${match.account.id}`, l: `Account · ${match.account.name}` }] : []),
-    ...refOptions("opportunities", user, 200).map((o) => ({ v: `opportunities:${o.id}`, l: `Opportunity · ${o.label}` })),
-    ...refOptions("accounts", user, 200).filter((o) => o.id !== match?.account?.id).map((o) => ({ v: `accounts:${o.id}`, l: `Account · ${o.label}` })),
   ] : [];
+  const groups = sel && writable ? ([["opportunities", "Opportunities"], ["accounts", "Accounts"], ["contacts", "Contacts"], ["leads", "Leads"], ["quotes", "Quotes"], ["cases", "Cases"]] as const)
+    .map(([k, label]) => ({ label, options: refOptions(k, user, 300).map((o) => ({ v: `${k}:${o.id}`, l: o.label })).filter((o) => !suggested.some((s) => s.v === o.v)) }))
+    .filter((g) => g.options.length) : [];
+  const anyTarget = suggested.length > 0 || groups.length > 0;
+  // Reply goes to the sender; reply all also to everyone on To and Cc (minus this mailbox), kept apart as in Outlook.
+  const me = (conn.email ?? user.email).toLowerCase();
+  const fromMe = (sel?.from?.emailAddress.address ?? "").toLowerCase() === me;
+  const uniq = (xs: (string | undefined)[]) => xs.filter((a): a is string => !!a && a.toLowerCase() !== me).filter((a, i, all) => all.findIndex((b) => b.toLowerCase() === a.toLowerCase()) === i);
+  const toList = (sel?.toRecipients ?? []).map((r) => r.emailAddress.address), ccList = (sel?.ccRecipients ?? []).map((r) => r.emailAddress.address);
+  const recipients = {
+    reply: { to: (fromMe ? uniq(toList) : uniq([sel?.from?.emailAddress.address])).join("; "), cc: "" },
+    replyAll: { to: uniq(fromMe ? toList : [sel?.from?.emailAddress.address, ...toList]).join("; "), cc: uniq(ccList).filter((a) => !(fromMe ? toList : [sel?.from?.emailAddress.address, ...toList]).some((b) => b?.toLowerCase() === a.toLowerCase())).join("; ") },
+  };
 
   return (
     <div>
@@ -276,13 +289,22 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
                 </div>
                 {writable ? (
                   <div className="space-y-3">
-                    <form action={logEmail.bind(null, sel!.id)} className="flex flex-wrap gap-2">
-                      <Select name="target" required defaultValue={targets[0]?.v ?? ""} className="min-w-0 flex-1" aria-label="Log against">
-                        {targets.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
-                      </Select>
-                      <Button type="submit" variant="primary">Log email</Button>
-                    </form>
+                    {anyTarget ? (
+                      <form action={logEmail.bind(null, sel!.id)} className="flex flex-wrap gap-2">
+                        <input type="hidden" name="returnTo" value={href({ msg: null })} />
+                        <Select name="target" required defaultValue={suggested[0]?.v ?? ""} className="min-w-0 flex-1" aria-label="Log against">
+                          {!suggested.length && <option value="" disabled>Choose the record to log it on…</option>}
+                          {suggested.length > 0 && <optgroup label="The sender in the CRM">{suggested.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}</optgroup>}
+                          {groups.map((g) => <optgroup key={g.label} label={g.label}>{g.options.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}</optgroup>)}
+                        </Select>
+                        <Button type="submit" variant="primary">Log email</Button>
+                      </form>
+                    ) : <p className="text-sm text-ink-2">There&apos;s no record you can log this on yet. Create one below (an opportunity, lead or contact) and the email is saved on it.</p>}
                     <div className="flex flex-wrap gap-2">
+                      <form action={opportunityFromEmail.bind(null, sel!.id)}>
+                        <input type="hidden" name="returnTo" value={href({ msg: null })} />
+                        <Button><Icon name="target" size={14} />Create opportunity</Button>
+                      </form>
                       {!match?.lead && !match?.contact && <form action={leadFromEmail.bind(null, sel!.id)}><Button>Create lead</Button></form>}
                       {!match?.account && <form action={accountFromEmail.bind(null, sel!.id)}><Button>Create account</Button></form>}
                       {!match?.contact && <form action={contactFromEmail.bind(null, sel!.id)}><Button>Create contact</Button></form>}
@@ -312,9 +334,7 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
                   currentFolderId={current?.id}
                   flagged={sel!.flag?.flagStatus === "flagged"}
                   pinned={!!sel!.pinned}
-                  replyTo={sel!.from?.emailAddress.address ?? "the sender"}
-                  replyAllTo={[sel!.from?.emailAddress.address, ...(sel!.toRecipients ?? []).map((r) => r.emailAddress.address), ...(sel!.ccRecipients ?? []).map((r) => r.emailAddress.address)]
-                    .filter((a): a is string => !!a && a.toLowerCase() !== (conn.email ?? "").toLowerCase()).filter((a, i, all) => all.indexOf(a) === i).join("; ") || "everyone on the message"}
+                  recipients={recipients}
                   actions={{
                     reply: respondToEmail.bind(null, sel!.id, "reply"),
                     replyAll: respondToEmail.bind(null, sel!.id, "replyAll"),
@@ -358,13 +378,13 @@ function DraftEditor({ draft, canSend, returnTo, listHref }: { draft: MailFull; 
         <Label htmlFor="d_bcc">BCC</Label><Input id="d_bcc" name="bcc" defaultValue={addrs(draft.bccRecipients)} placeholder="Optional; hidden from the other recipients" />
         <Label htmlFor="d_subject">Subject</Label><Input id="d_subject" name="subject" defaultValue={draft.subject ?? ""} />
       </div>
-      <Textarea name="body" rows={12} defaultValue={draft.body?.content ?? ""} aria-label="Message" />
+      <HtmlEditor name="html" html={draft.body?.content ?? ""} label="Message" />
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" formAction={sendDraftEmail.bind(null, draft.id)} variant="primary" disabled={!canSend}
           title={canSend ? undefined : "Needs Mail.Send approved by your Microsoft 365 admin"}><Icon name="send" size={14} />Send</Button>
         <Button type="submit">Save draft</Button>
         <Button type="submit" formAction={deleteEmail.bind(null, draft.id)} variant="danger" formNoValidate>Discard draft</Button>
-        <span className="text-xs text-ink-3">Sent from your own mailbox; Outlook keeps a copy in Sent Items.</span>
+        <span className="text-xs text-ink-3">Edit it like in Outlook; formatting, the quoted thread and attachments stay. Sent from your own mailbox; Outlook keeps a copy in Sent Items.</span>
       </div>
     </form>
   );

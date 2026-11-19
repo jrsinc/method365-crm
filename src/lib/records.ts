@@ -259,6 +259,8 @@ export function parseForm(def: ResourceDef, form: FormData | Record<string, unkn
         data[f.name] = countryName(raw) ?? raw.slice(0, 100);
         break;
       case "select":
+        // "Other…" dropdowns keep whatever was typed (prepareOther has already matched it to a list option where it can).
+        if (f.other) { data[f.name] = raw.replace(/\s+/g, " ").slice(0, 200); break; }
         if (f.options && !f.options.includes(raw) && allow[f.name] !== raw && !isCustomOption(def.key, f.name, raw)) errors[f.name] = "Choose a valid option.";
         data[f.name] = raw;
         break;

@@ -18,7 +18,7 @@ export function allOptions(def: ResourceDef, f: Field): string[] {
 }
 
 /** Dropdowns that accept new options. Workflow fields (stages, task/quote/case status…) stay fixed. */
-export const extendable = (def: ResourceDef, f: Field) => f.type === "select" && !LOCKED_PICKLISTS.includes(`${def.key}.${f.name}`);
+export const extendable = (def: ResourceDef, f: Field) => f.type === "select" && !f.other && !LOCKED_PICKLISTS.includes(`${def.key}.${f.name}`);
 
 export function addOption(resource: string, field: string, value: string, userId: string) {
   run("INSERT OR IGNORE INTO picklist_values (resource, field, value, created_by) VALUES (?, ?, ?, ?)", resource, field, value, userId);

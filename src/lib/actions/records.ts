@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUser, can } from "../auth/dal";
-import { getResource, NEW_REF, RELATABLE, RESOURCES, type ResourceDef, type ResourceKey } from "../resources";
+import { getResource, NEW_REF, OTHER_REF, RELATABLE, RESOURCES, type ResourceDef, type ResourceKey } from "../resources";
 import {
   canCreate, canDelete, canEdit, deleteRecordRow, getRecord, insertRecord, parseForm, scopeSql, updateRecord, type FieldErrors,
 } from "../records";
@@ -106,6 +106,13 @@ function preparePicklists(def: ResourceDef, fd: FormData) {
   const allow: Record<string, string> = {};
   const errors: FieldErrors = {};
   for (const f of def.fields) {
+    // "Other…": use the typed text, or the list's spelling when it matches an option ("send quote" → "Send quote").
+    if (f.type === "select" && f.other && fd.get(f.name) === OTHER_REF) {
+      const v = String(fd.get(`${f.name}__other`) ?? "").trim().replace(/\s+/g, " ").slice(0, 200);
+      if (!v) { errors[f.name] = `Type the ${f.label.toLowerCase()}, or choose one from the list.`; continue; }
+      fd.set(f.name, (f.options ?? []).find((o) => o.toLowerCase() === v.toLowerCase()) ?? v);
+      continue;
+    }
     if (f.type !== "select" || fd.get(f.name) !== NEW_REF) continue;
     if (!extendable(def, f)) { errors[f.name] = "New options can't be added to this list."; continue; }
     const v = String(fd.get(`${f.name}__new`) ?? "").trim().replace(/\s+/g, " ").slice(0, 60);

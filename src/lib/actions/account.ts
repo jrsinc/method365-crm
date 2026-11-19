@@ -50,3 +50,24 @@ export async function revokeOtherSessions() {
   await audit(user, "sessions.revoke");
   revalidatePath("/profile");
 }
+
+/**
+ * The user's email signature, added to every email the CRM writes for them (replies, drafts, quotes, supplier
+ * inquiries). Pasted from Outlook it keeps its formatting; anything that could run code is removed.
+ */
+export async function saveSignature(fd: FormData) {
+  const user = await requireUser();
+  const raw = String(fd.get("signature") ?? "").slice(0, 200_000);
+  const clean = raw
+    .replace(/<(script|iframe|object|embed|form|style)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<(script|iframe|object|embed|base|meta|link)[^>]*>/gi, "")
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"')
+    .trim();
+  const empty = !clean.replace(/<br\s*\/?>|&nbsp;|<\/?(div|p|span)[^>]*>/gi, "").trim();
+  run("UPDATE users SET email_signature = ? WHERE id = ?", empty ? null : clean, user.id);
+  await audit(user, "profile.signature", "users", user.id);
+  revalidatePath("/profile");
+  const { redirect } = await import("next/navigation");
+  redirect(`/profile?msg=${encodeURIComponent(empty ? "Signature removed." : "Signature saved. It's added to emails you write from the CRM.")}`);
+}

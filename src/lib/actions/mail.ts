@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser, can } from "../auth/dal";
 import { RESOURCES, RELATABLE, type ResourceKey } from "../resources";
 import { getRecord, insertRecord } from "../records";
-import { calendarEvent, connection, disconnect, mailActionsEnabled, matchSender, listFolders, message, messageHtml, moveMessage, respond, safeFolder, setFlag, setPinned, setRead, type MailFull, sendDraft, updateDraft } from "../outlook";
+import { calendarEvent, connection, createResponseDraft, disconnect, mailActionsEnabled, matchSender, listFolders, message, messageHtml, moveMessage, safeFolder, setFlag, setPinned, setRead, type MailFull, sendDraft, updateDraft } from "../outlook";
 import { audit } from "../audit";
 import { get, run } from "../db";
 
@@ -27,12 +27,17 @@ function visibleMatch(user: Awaited<ReturnType<typeof requireUser>>, email: stri
   };
 }
 
-async function load(messageId: string) {
+async function load(messageId: string, fd?: FormData) {
   const user = await requireUser();
   if (!can(user, "records.write")) redirect("/forbidden");
-  // If Outlook can't be reached (expired sign-in, network), say so on the page instead of crashing.
-  const m = await message(user.id, messageId).catch(() => null);
-  if (!m) back(messageId, "Couldn't read this email from Outlook just now. Try again; if it keeps failing, reconnect Outlook.");
+  // If Outlook can't be reached (expired sign-in, busy, network), say why on the page instead of crashing.
+  let why = "";
+  const m = await message(user.id, messageId).catch((e: Error) => { why = e.message; return null; });
+  if (!m) {
+    console.error("[outlook] couldn't read message", why);
+    const text = `Couldn't read this email from Outlook just now${why ? ` (${why})` : ""}. Try again; if it keeps failing, reconnect Outlook.`;
+    if (fd) backTo(fd, messageId, text); else back(messageId, text);
+  }
   return { user, m: m! };
 }
 
@@ -124,16 +129,57 @@ async function keepOriginal(userId: string, activityId: string, messageId: strin
 
 /** Save the email on a record's timeline as an Email activity, keeping its Outlook formatting. */
 export async function logEmail(messageId: string, fd: FormData) {
-  const { user, m } = await load(messageId);
   const [type, id] = String(fd.get("target") ?? "").split(":");
-  if (!RELATABLE.includes(type as ResourceKey) || !id || !getRecord(RESOURCES[type as ResourceKey], user, id)) back(messageId, "Choose a record to log this email against.");
-  const r = insertRecord(RESOURCES.activities, user, {
-    type: "Email", subject: (m.subject ?? "(no subject)").slice(0, 300), occurred_at: m.receivedDateTime.slice(0, 19).replace("T", " "),
-    body: `From: ${m.from?.emailAddress.name ?? ""} <${addr(m)}>\n\n${plain(m)}`, owner_id: user.id, duration_min: null,
-  }, { related_type: type, related_id: id });
-  if (r.ok) { await keepOriginal(user.id, r.id, messageId); await audit(user, "outlook.log", type, id, { activity: r.id }); }
+  if (!RELATABLE.includes(type as ResourceKey) || !id) backTo(fd, messageId, "Couldn't log it: choose the record to log this email on.");
+  const { user, m } = await load(messageId, fd);
+  const rec = getRecord(RESOURCES[type as ResourceKey], user, id);
+  if (!rec) backTo(fd, messageId, "Couldn't log it: you can't see that record any more.");
+  const subject = (m.subject ?? "(no subject)").slice(0, 300), when = m.receivedDateTime.slice(0, 19).replace("T", " ");
+  if (get("SELECT 1 FROM activities WHERE related_type = ? AND related_id = ? AND type = 'Email' AND subject = ? AND occurred_at = ?", type, id, subject, when)) {
+    backTo(fd, messageId, `Already logged on ${String(rec!.__title ?? "that record")}.`);
+  }
+  let r: ReturnType<typeof insertRecord>;
+  try {
+    r = insertRecord(RESOURCES.activities, user, {
+      type: "Email", subject, occurred_at: when,
+      body: `From: ${m.from?.emailAddress.name ?? ""} <${addr(m)}>\n\n${plain(m)}`, owner_id: user.id, duration_min: null,
+    }, { related_type: type, related_id: id });
+  } catch (e) {
+    console.error("[outlook] log email failed", e);
+    backTo(fd, messageId, `Couldn't log the email: ${(e as Error).message}`);
+  }
+  if (!r!.ok) backTo(fd, messageId, `Couldn't log the email: ${Object.values(r!.errors ?? {})[0] ?? r!.error ?? "unknown error"}`);
+  const done = r! as { ok: true; id: string };
+  await keepOriginal(user.id, done.id, messageId);
+  await audit(user, "outlook.log", type, id, { activity: done.id });
   revalidatePath("/", "layout");
-  back(messageId, r.ok ? "Email logged on the record's timeline." : "Couldn't log the email.");
+  backTo(fd, messageId, `Email logged on ${String(rec!.__title ?? "the record")}.`);
+}
+
+/**
+ * New opportunity from an email: named after the subject, for the sender's account and contact when the CRM
+ * knows them, with the email on its timeline. Opens the opportunity's edit page to fill in the rest.
+ */
+export async function opportunityFromEmail(messageId: string, fd: FormData) {
+  const { user, m } = await load(messageId, fd);
+  if (!can(user, "records.write")) backTo(fd, messageId, "Your role can't create opportunities.");
+  const match = visibleMatch(user, addr(m));
+  const accountId = match.contact?.account_id && getRecord(RESOURCES.accounts, user, match.contact.account_id) ? match.contact.account_id : match.account?.id ?? null;
+  const name = (m.subject ?? "").replace(/^\s*((re|fw|fwd|aw|tr)\s*:\s*)+/i, "").trim().slice(0, 200) || `Enquiry from ${addr(m)}`;
+  const r = insertRecord(RESOURCES.opportunities, user, {
+    name, account_id: accountId, contact_id: match.contact?.id ?? null, stage: "Lead Generated", forecast_category: "Pipeline",
+    source: "Email Campaign", owner_id: user.id, description: `From an email by ${m.from?.emailAddress.name ?? ""} <${addr(m)}> on ${m.receivedDateTime.slice(0, 10)}`,
+  });
+  if (!r.ok) backTo(fd, messageId, `Couldn't create the opportunity: ${Object.values(r.errors ?? {})[0] ?? r.error ?? "unknown error"}`);
+  const oppId = (r as { id: string }).id;
+  const a = insertRecord(RESOURCES.activities, user, {
+    type: "Email", subject: (m.subject ?? "(no subject)").slice(0, 300), occurred_at: m.receivedDateTime.slice(0, 19).replace("T", " "),
+    body: `From: ${m.from?.emailAddress.name ?? ""} <${addr(m)}>\n\n${plain(m)}`, owner_id: user.id,
+  }, { related_type: "opportunities", related_id: oppId });
+  if (a.ok) await keepOriginal(user.id, a.id, messageId);
+  await audit(user, "outlook.create_opportunity", "opportunities", oppId);
+  revalidatePath("/", "layout");
+  redirect(`/opportunities/${oppId}/edit?msg=${encodeURIComponent("Opportunity created from the email (it's on the timeline). Check the details and save.")}`);
 }
 
 export async function leadFromEmail(messageId: string) {
@@ -205,22 +251,32 @@ function backTo(fd: FormData, messageId: string, msg: string): never {
 const emails = (v: FormDataEntryValue | null) => String(v ?? "").split(/[;,\s]+/).map((x) => x.trim()).filter(Boolean);
 const validEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
-/** Reply, reply all or forward from the CRM. Sent from the user's own mailbox; Outlook keeps it in Sent Items. */
+/**
+ * Reply, reply all or forward from the CRM, through Outlook's own reply draft: Outlook's formatting and the quoted
+ * thread underneath, the user's signature, and the To / CC / BCC exactly as shown on the page.
+ * "Send" sends it from the user's mailbox (kept in Sent Items); "Save as draft" opens it to keep editing.
+ */
 export async function respondToEmail(messageId: string, mode: "reply" | "replyAll" | "forward", fd: FormData) {
   const user = await requireUser();
   if (!mailActionsEnabled(user.id)) backTo(fd, messageId, "Turn on reply & forward first (Microsoft needs to allow sending).");
   const text = String(fd.get("body") ?? "").trim().slice(0, 50_000);
-  const to = emails(fd.get("to")), cc = emails(fd.get("cc"));
-  if (mode === "forward" && !to.length) backTo(fd, messageId, "Not sent: add at least one To address to forward.");
-  if (![...to, ...cc].every(validEmail)) backTo(fd, messageId, "Not sent: check the email addresses.");
-  if (!text && mode !== "forward") backTo(fd, messageId, "Not sent: write a message first.");
+  const to = emails(fd.get("to")), cc = emails(fd.get("cc")), bcc = emails(fd.get("bcc"));
+  const asDraft = fd.get("intent") === "draft";
+  const verb = asDraft ? "Not saved" : "Not sent";
+  if (!to.length) backTo(fd, messageId, `${verb}: add at least one To address.`);
+  const bad = [...to, ...cc, ...bcc].filter((e) => !validEmail(e));
+  if (bad.length) backTo(fd, messageId, `${verb}: check these email addresses: ${bad.join(", ")}`);
+  if (!text && mode !== "forward" && !asDraft) backTo(fd, messageId, `${verb}: write a message first.`);
+  let draftId = "";
   try {
-    await respond(user.id, messageId, mode, text, to, cc);
+    draftId = await createResponseDraft(user.id, messageId, mode, { text, to, cc, bcc });
+    if (!asDraft) await sendDraft(user.id, draftId);
   } catch (e) {
-    backTo(fd, messageId, `Not sent: ${(e as Error).message}`);
+    backTo(fd, messageId, `${verb}: ${(e as Error).message}`);
   }
-  await audit(user, `outlook.${mode}`, "mailbox", user.id, { to: to.length ? to : undefined, cc: cc.length ? cc : undefined });
-  backTo(fd, messageId, mode === "forward" ? `Forwarded to ${to.join(", ")}.` : mode === "replyAll" ? "Reply sent to everyone." : "Reply sent.");
+  await audit(user, `outlook.${mode}${asDraft ? ".draft" : ""}`, "mailbox", user.id, { to, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined });
+  if (asDraft) redirect(`/outlook?f=drafts&m=${encodeURIComponent(draftId)}&msg=${encodeURIComponent("Saved in your Drafts. Finish it here and press Send.")}`);
+  backTo(fd, messageId, mode === "forward" ? `Forwarded to ${to.join(", ")}.` : `Reply sent to ${[...to, ...cc].join(", ")}.`);
 }
 
 export async function flagEmail(messageId: string, flagged: boolean, fd: FormData) {
@@ -269,9 +325,12 @@ export async function deleteEmail(messageId: string, fd: FormData) {
 
 /** The draft as edited on the Outlook page (To, CC, BCC, subject, message). */
 function draftFrom(fd: FormData, messageId: string) {
+  const html = fd.get("html");
   const c = {
     to: emails(fd.get("to")), cc: emails(fd.get("cc")), bcc: emails(fd.get("bcc")),
     subject: String(fd.get("subject") ?? "").trim().slice(0, 300), text: String(fd.get("body") ?? "").slice(0, 50_000),
+    // The message as edited with its formatting (the quoted thread, signature and attachments stay as they are).
+    ...(typeof html === "string" && html.trim() ? { html: html.slice(0, 4_000_000) } : {}),
   };
   const bad = [...c.to, ...c.cc, ...c.bcc].filter((e) => !validEmail(e));
   if (bad.length) backTo(fd, messageId, `Not saved: check these email addresses: ${bad.join(", ")}`);
@@ -301,8 +360,18 @@ export async function sendDraftEmail(messageId: string, fd: FormData) {
   // Mark any sourcing request drafted with this email as sent.
   const r = get<{ id: string }>("SELECT id FROM sourcing_requests WHERE inquiry_draft_id = ?", messageId);
   if (r) run("UPDATE sourcing_requests SET status = CASE WHEN status = 'Draft' THEN 'Sent' ELSE status END, updated_at = datetime('now') WHERE id = ?", r.id);
+  // A quote emailed to the customer: note it on the quote's timeline.
+  const q = get<{ id: string; number: string | null }>("SELECT id, number FROM quotes WHERE email_draft_id = ?", messageId);
+  if (q) {
+    insertRecord(RESOURCES.activities, user, {
+      type: "Email", subject: c.subject || `Quote ${q.number ?? ""}`, occurred_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+      body: `Quote emailed to ${c.to.join(", ")}${c.cc.length ? ` (CC ${c.cc.join(", ")})` : ""} from the CRM.`, owner_id: user.id,
+    }, { related_type: "quotes", related_id: q.id });
+    run("UPDATE quotes SET email_draft_id = NULL WHERE id = ?", q.id);
+    await audit(user, "quote.emailed", "quotes", q.id, { to: c.to });
+  }
   await audit(user, "outlook.send_draft", r ? "sourcing" : "mailbox", r?.id ?? user.id, { to: c.to, cc: c.cc.length ? c.cc : undefined, bcc: c.bcc.length ? c.bcc : undefined });
-  backToList(fd, `Sent to ${c.to.join(", ")}${r ? ". The sourcing request is now marked Sent" : ""}.`);
+  backToList(fd, `Sent to ${c.to.join(", ")}${r ? ". The sourcing request is now marked Sent" : q ? ". It's noted on the quote's timeline" : ""}.`);
 }
 
 export async function disconnectOutlook() {

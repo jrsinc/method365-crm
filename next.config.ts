@@ -9,8 +9,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   serverExternalPackages: [],
   allowedDevOrigins: TUNNELS,
-  // 3 MB so company logos can be uploaded (the logo itself is capped at 1 MB).
-  experimental: { serverActions: { allowedOrigins: TUNNELS, bodySizeLimit: "3mb" } },
+  // 5 MB: company logo uploads (logo capped at 1 MB) and quote PDFs attached to emails (capped at about 2 MB).
+  experimental: { serverActions: { allowedOrigins: TUNNELS, bodySizeLimit: "5mb" } },
   turbopack: {
     rules: {
       "*.css": {

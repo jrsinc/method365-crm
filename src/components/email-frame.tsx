@@ -33,11 +33,26 @@ export function EmailFrame({ html, maxHeight }: { html: string; maxHeight?: numb
     if (!f) return;
     const fit = () => {
       const d = f.contentDocument;
-      if (d?.documentElement) setHeight(Math.max(60, d.documentElement.scrollHeight + 4));
+      // While folded away (a closed message in a thread) there's nothing to measure; wait until it's shown.
+      if (!f.offsetWidth || !d?.body) return;
+      // The body's own height (not the frame's), so growing the frame never feeds back into the measurement.
+      const b = d.body.getBoundingClientRect();
+      setHeight(Math.max(60, Math.ceil(Math.max(b.height, d.body.scrollHeight)) + 4));
     };
-    f.addEventListener("load", fit);
+    // Re-measure when the message is opened (the frame gets a width), resized, or its images finish loading.
+    const outer = new ResizeObserver(fit);
+    outer.observe(f);
+    let inner: ResizeObserver | null = null;
+    const loaded = () => {
+      fit();
+      const body = f.contentDocument?.body;
+      if (body) { inner?.disconnect(); inner = new ResizeObserver(fit); inner.observe(body); }
+      f.contentDocument?.querySelectorAll("img").forEach((i) => i.addEventListener("load", fit));
+    };
+    f.addEventListener("load", loaded);
+    if (f.contentDocument?.readyState === "complete") loaded();
     const t = [setTimeout(fit, 300), setTimeout(fit, 1200), setTimeout(fit, 3000)]; // images loading late
-    return () => { f.removeEventListener("load", fit); t.forEach(clearTimeout); };
+    return () => { f.removeEventListener("load", loaded); outer.disconnect(); inner?.disconnect(); t.forEach(clearTimeout); };
   }, [doc]);
 
   return (

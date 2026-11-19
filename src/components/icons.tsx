@@ -20,6 +20,7 @@ const P: Record<string, string> = {
   calendar: "M4 6h16v15H4zM4 10h16M8 3v4M16 3v4",
   mail: "M3 5h18v14H3zM3 6l9 7 9-7",
   file: "M6 3h8l4 4v14H6zM14 3v4h4",
+  copy: "M9 9h11v11H9zM5 15H4V4h11v1",
   upload: "M12 16V4M7 9l5-5 5 5M4 16v4h16v-4",
   database: "M12 8c4.4 0 8-1.3 8-3s-3.6-3-8-3-8 1.3-8 3 3.6 3 8 3zM4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",
   shield: "M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z",

@@ -129,12 +129,52 @@ async function accessToken(userId: string) {
   return t.access_token;
 }
 
+/*
+ * Microsoft allows an app at most 4 requests at the same time per mailbox ("MailboxConcurrency" limit) and
+ * answers 429 above that. Every Graph call goes through gfetch, which keeps at most 3 in flight per mailbox
+ * (queueing the rest) and, if Microsoft still says it's busy (429/503), waits as told and tries again.
+ */
+const MAX_PER_MAILBOX = 3;
+type Gate = { active: number; queue: (() => void)[] };
+const gates: Map<string, Gate> = ((globalThis as { __graphGates?: Map<string, Gate> }).__graphGates ??= new Map());
+
+async function acquire(userId: string) {
+  let g = gates.get(userId);
+  if (!g) gates.set(userId, (g = { active: 0, queue: [] }));
+  if (g.active < MAX_PER_MAILBOX) { g.active++; return; }
+  await new Promise<void>((resolve) => g.queue.push(resolve)); // the slot is handed over by release()
+}
+function release(userId: string) {
+  const g = gates.get(userId);
+  if (!g) return;
+  const next = g.queue.shift();
+  if (next) next(); else g.active--;
+}
+
+async function gfetch(userId: string, path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) {
+  await acquire(userId);
+  try {
+    for (let attempt = 0; ; attempt++) {
+      const token = await accessToken(userId);
+      const r = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+        ...init, headers: { Authorization: `Bearer ${token}`, ...init.headers }, cache: "no-store",
+      });
+      if ((r.status === 429 || r.status === 503) && attempt < 4) {
+        const wait = Math.min(Number(r.headers.get("Retry-After")) || 2 ** attempt, 10);
+        await r.body?.cancel().catch(() => {});
+        await new Promise((res) => setTimeout(res, wait * 1000));
+        continue;
+      }
+      return r;
+    }
+  } finally {
+    release(userId);
+  }
+}
+
 /** POST / PATCH to Microsoft Graph (send a reply, set a flag…). Throws with Microsoft's message on failure. */
 export async function graphWrite(userId: string, method: "POST" | "PATCH", path: string, body: unknown) {
-  const token = await accessToken(userId);
-  const r = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-    method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store",
-  });
+  const r = await gfetch(userId, path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!r.ok) {
     const j = (await r.json().catch(() => ({}))) as { error?: { code?: string; message?: string } };
     const denied = r.status === 403 || /accessdenied|authorization|scope/i.test(`${j.error?.code} ${j.error?.message}`);
@@ -147,15 +187,13 @@ export async function graphWrite(userId: string, method: "POST" | "PATCH", path:
 
 /** Raw GET (e.g. an attachment's bytes). Caller handles errors. */
 export async function graphRaw(userId: string, path: string) {
-  const token = await accessToken(userId);
-  return fetch(`https://graph.microsoft.com/v1.0${path}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+  return gfetch(userId, path);
 }
 
 /** GET a Microsoft Graph path for this user. Records the error on the connection if it fails. */
 export async function graph<T>(userId: string, path: string, recordError = true, html = false): Promise<T> {
   try {
-    const token = await accessToken(userId);
-    const r = await fetch(`https://graph.microsoft.com/v1.0${path}`, { headers: { Authorization: `Bearer ${token}`, Prefer: `outlook.body-content-type="${html ? "html" : "text"}"` }, cache: "no-store" });
+    const r = await gfetch(userId, path, { headers: { Prefer: `outlook.body-content-type="${html ? "html" : "text"}"` } });
     if (!r.ok) {
       const j = (await r.json().catch(() => ({}))) as { error?: { message?: string } };
       throw new Error(j.error?.message ?? `Outlook returned ${r.status}`);
@@ -208,6 +246,7 @@ const WELL_KNOWN: [string, string][] = [
 ];
 const FOLDER_FIELDS = "id,displayName,parentFolderId,childFolderCount,unreadItemCount,totalItemCount";
 const folderCache = new Map<string, { at: number; folders: FolderNode[] }>();
+const wellKnownCache = new Map<string, Map<string, string>>();
 
 /** Every mail folder in the mailbox (including sub-folders), in Outlook's order, as a flat list with depth. */
 export async function listFolders(userId: string, fresh = false): Promise<FolderNode[]> {
@@ -225,11 +264,16 @@ export async function listFolders(userId: string, fresh = false): Promise<Folder
     return out;
   };
 
-  const [top, ids] = await Promise.all([
-    page("/me/mailFolders"),
-    Promise.all(WELL_KNOWN.map(([k]) => graph<{ id: string }>(userId, `/me/mailFolders/${k}?$select=id`, false).then((r) => [r.id, k] as const).catch(() => null))),
-  ]);
-  const known = new Map(ids.filter((x): x is readonly [string, string] => !!x));
+  // The standard folders' ids never change, so they are looked up once per mailbox, not on every load.
+  const knownIds = async () => {
+    const cached = wellKnownCache.get(userId);
+    if (cached) return cached;
+    const ids = await Promise.all(WELL_KNOWN.map(([k]) => graph<{ id: string }>(userId, `/me/mailFolders/${k}?$select=id`, false).then((r) => [r.id, k] as const).catch(() => null)));
+    const map = new Map(ids.filter((x): x is readonly [string, string] => !!x));
+    if (map.size >= 3) wellKnownCache.set(userId, map); // don't remember a lookup that mostly failed
+    return map;
+  };
+  const [top, known] = await Promise.all([page("/me/mailFolders"), knownIds()]);
   const rank = (f: MailFolder) => { const k = known.get(f.id); return k ? WELL_KNOWN.findIndex(([w]) => w === k) : 99; };
 
   // Load sub-folders level by level (max 6 levels, ~80 requests).
@@ -283,23 +327,67 @@ export async function listMessages(userId: string, folder: string, opts: { unrea
 const toRecipients = (list: string[]) => list.map((address) => ({ emailAddress: { address } }));
 const asHtml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!).replace(/\r?\n/g, "<br>");
 
-export type Compose = { to: string[]; cc: string[]; bcc: string[]; subject: string; text: string };
+/**
+ * An email written in the CRM. `text` is plain text (turned into Outlook's default font); `html`, when given,
+ * is used as is (a draft edited with its formatting, or a reply that already holds the quoted thread).
+ */
+export type Compose = { to: string[]; cc: string[]; bcc: string[]; subject: string; text: string; html?: string };
+export type FileAttachment = { name: string; contentType: string; contentBytes: string };
+
+/** Outlook's default look for new mail. */
+const FONT = "font-family:Aptos,Calibri,Arial,sans-serif;font-size:11pt";
+export const textToHtml = (text: string) => `<div style="${FONT}">${asHtml(text)}</div>`;
+
+/**
+ * The user's email signature (set on their Profile page), added to every email the CRM writes for them.
+ * Microsoft doesn't let apps read the signature saved in Outlook itself, so it's kept in the CRM.
+ */
+export function signatureHtml(userId: string) {
+  const s = get<{ email_signature: string | null }>("SELECT email_signature FROM users WHERE id = ?", userId)?.email_signature?.trim();
+  return s ? `<div style="${FONT}"><br></div><div class="crm-signature" style="${FONT}">${s}</div>` : "";
+}
+
 const composeBody = (c: Compose) => ({
   subject: c.subject,
-  body: { contentType: "HTML", content: `<div style="font-family:Aptos,Calibri,Arial,sans-serif;font-size:11pt">${asHtml(c.text)}</div>` },
+  body: { contentType: "HTML", content: c.html ?? textToHtml(c.text) },
   toRecipients: toRecipients(c.to), ccRecipients: toRecipients(c.cc), bccRecipients: toRecipients(c.bcc),
 });
 
-/** A new message in the user's own Drafts folder. Nothing is sent. */
-export async function createDraft(userId: string, c: Compose) {
-  const m = (await graphWrite(userId, "POST", "/me/messages", composeBody(c))) as { id?: string; webLink?: string } | null;
+/**
+ * A new message in the user's own Drafts folder, with their signature and any files attached. Nothing is sent.
+ * Microsoft accepts up to about 3 MB of attachments this way.
+ */
+export async function createDraft(userId: string, c: Compose, files: FileAttachment[] = []) {
+  const body = composeBody({ ...c, html: (c.html ?? textToHtml(c.text)) + signatureHtml(userId) });
+  const m = (await graphWrite(userId, "POST", "/me/messages", {
+    ...body,
+    ...(files.length ? { attachments: files.map((f) => ({ "@odata.type": "#microsoft.graph.fileAttachment", ...f })) } : {}),
+  })) as { id?: string; webLink?: string } | null;
   folderCache.delete(userId);
   return { id: m?.id ?? null, webLink: m?.webLink ?? null };
 }
 
-/** Change a draft's recipients, subject and text. */
+/** Change a draft's recipients, subject and message (formatting kept when `html` is given). */
 export async function updateDraft(userId: string, messageId: string, c: Compose) {
   return graphWrite(userId, "PATCH", `/me/messages/${encodeURIComponent(messageId)}`, composeBody(c));
+}
+
+/**
+ * Reply, reply all or forward as a draft made by Outlook itself: Outlook's own reply header and the quoted
+ * thread underneath, the user's message and signature on top, and the recipients as chosen in the CRM.
+ * Returns the draft's id; send it with sendDraft, or open it to keep editing.
+ */
+export async function createResponseDraft(userId: string, messageId: string, mode: "reply" | "replyAll" | "forward",
+  c: { text: string; to: string[]; cc: string[]; bcc: string[] }) {
+  const action = mode === "reply" ? "createReply" : mode === "replyAll" ? "createReplyAll" : "createForward";
+  const comment = textToHtml(c.text) + signatureHtml(userId);
+  const d = (await graphWrite(userId, "POST", `/me/messages/${encodeURIComponent(messageId)}/${action}`, {
+    comment,
+    message: { toRecipients: toRecipients(c.to), ccRecipients: toRecipients(c.cc), bccRecipients: toRecipients(c.bcc) },
+  })) as { id?: string } | null;
+  if (!d?.id) throw new Error("Outlook didn't create the reply.");
+  folderCache.delete(userId);
+  return d.id;
 }
 
 /** Send a draft from the user's mailbox; Outlook moves it to Sent Items. */
@@ -309,17 +397,9 @@ export async function sendDraft(userId: string, messageId: string) {
   return r;
 }
 
-/** A draft as plain text, for editing in the CRM. */
+/** A draft with its formatting (HTML), for editing in the CRM. */
 export async function draftForEdit(userId: string, messageId: string) {
-  return graph<MailFull>(userId, `/me/messages/${encodeURIComponent(messageId)}?$select=id,subject,body,toRecipients,ccRecipients,bccRecipients,isDraft,webLink`, true, false);
-}
-
-/** Reply, reply all or forward. Outlook adds the original message underneath, as it does in Outlook itself. */
-export async function respond(userId: string, messageId: string, mode: "reply" | "replyAll" | "forward", text: string, to: string[] = [], cc: string[] = []) {
-  const id = encodeURIComponent(messageId);
-  const comment = `<div style="font-family:Aptos,Calibri,Arial,sans-serif;font-size:11pt">${asHtml(text)}</div>`;
-  if (mode === "forward") return graphWrite(userId, "POST", `/me/messages/${id}/forward`, { comment, toRecipients: toRecipients(to), ...(cc.length ? { message: { ccRecipients: toRecipients(cc) } } : {}) });
-  return graphWrite(userId, "POST", `/me/messages/${id}/${mode}`, { comment, ...(cc.length ? { message: { ccRecipients: toRecipients(cc) } } : {}) });
+  return graph<MailFull>(userId, `/me/messages/${encodeURIComponent(messageId)}?$select=id,subject,body,toRecipients,ccRecipients,bccRecipients,isDraft,webLink`, true, true);
 }
 
 export async function setFlag(userId: string, messageId: string, flagged: boolean) {

@@ -12,6 +12,7 @@ import { hrefWith, str, TITLE_FIELDS, type SP } from "@/lib/page-helpers";
 import { BulkTable } from "@/components/bulk-table";
 import { Card, Empty, Input, LinkButton, Notice, Select, Button, KpiCard, cx } from "@/components/ui";
 import { Icon } from "@/components/icons";
+import { CopyTableButton } from "@/components/copy-table";
 import { MODULE_META, chipCounts, moduleStats } from "@/lib/module-meta";
 import { money } from "@/lib/format";
 
@@ -67,6 +68,20 @@ export default async function ListPage({ params, searchParams }: { params: Promi
     };
   });
 
+  // Product Master: "Copy table" copies the filtered products (up to 500) as a plain table with the goods details.
+  const copy = def.key === "catalogue" ? (() => {
+    const all = listRecords(def, user, { q: str(sp, "q"), filters, sort: str(sp, "sort") || undefined, dir: str(sp, "dir") || undefined, page: 1, pageSize: 500 }).rows;
+    const cols = ["material_id", "name", "dosage_form", "pack_size", "manufacturer", "lot_number", "expiry", "hts_code", "uom", "unit_price"]
+      .map((n) => def.fields.find((f) => f.name === n)!).filter(Boolean);
+    return {
+      headers: ["Sl No.", ...cols.map((f) => f.label)],
+      rows: all.map((r, i) => [String(i + 1), ...cols.map((f) => {
+        const t = r[f.name] == null || r[f.name] === "" ? "" : fieldText(f, r, baseCode);
+        return (f.name === "lot_number" || f.name === "expiry") && !t ? "TBD" : t === "—" ? "" : t;
+      })]),
+    };
+  })() : null;
+
   const chipField = MODULE_META[def.key]?.chips;
   const filterFields = def.fields.filter((f) => f.filter && f.name !== chipField && (f.type !== "user" || readAll));
   const pages = Math.max(1, Math.ceil(result.total / result.pageSize));
@@ -86,6 +101,7 @@ export default async function ListPage({ params, searchParams }: { params: Promi
         <h1 className="sr-only">{def.label}</h1>
         {def.key === "opportunities" && <LinkButton href="/pipeline">Board view</LinkButton>}
         {def.key === "activities" && <LinkButton href="/calendar">Calendar view</LinkButton>}
+        {copy && copy.rows.length > 0 && <CopyTableButton headers={copy.headers} rows={copy.rows} />}
         {writable && <LinkButton href={`${base}/new`} variant="primary"><Icon name="plus" size={15} />{meta?.addLabel ?? `Add ${def.singular}`}</LinkButton>}
       </div>
       {msg && <Notice tone="green">{msg}</Notice>}

@@ -1,7 +1,7 @@
 import {
   ACCOUNT_TYPES, ACTIVITY_TYPES, APPROVAL_ROLES, APPROVAL_STATUSES, CAMPAIGN_CHANNELS, CAMPAIGN_STATUSES, CAMPAIGN_TYPES,
   CASE_PRIORITIES, CASE_STATUSES, CASE_TYPES, CONTACT_STATUSES, DEAL_STAGES, DOCUMENT_ACCESS, DOCUMENT_CATEGORIES,
-  FORECAST_CATEGORIES, INDUSTRIES, LEAD_RATINGS, LEAD_SOURCES, LEAD_STATUSES, MIGRATION_ENTITIES, MIGRATION_STATUSES,
+  FORECAST_CATEGORIES, INDUSTRIES, LEAD_RATINGS, LEAD_SOURCES, LEAD_STATUSES, MIGRATION_ENTITIES, MIGRATION_STATUSES, NEXT_STEPS, DOSAGE_FORMS,
   PRICE_SEGMENTS, PRODUCT_STATUSES, PRODUCT_TYPES, QUOTE_STATUSES, SOURCING_STATUSES, SUPPLIER_CATEGORIES, SUPPLIER_STATUSES,
   TASK_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES,
   WEB_FORM_FIELDS, type Permission,
@@ -21,6 +21,8 @@ export type Field = {
   label: string;
   type: FieldType;
   options?: string[];
+  /** Select that also offers "Other…": the person types their own value, which is saved as typed (not added to the list). */
+  other?: boolean;
   ref?: ResourceKey;
   required?: boolean;
   list?: boolean;
@@ -46,6 +48,8 @@ export type ResourceKey =
 /** Reference dropdowns that can create a missing record on the spot from just its name. */
 export const QUICK_ADD: ResourceKey[] = ["accounts", "suppliers", "contacts", "opportunities", "catalogue", "price-books"];
 export const NEW_REF = "__new__";
+/** The "Other…" choice in a dropdown that accepts a typed value (Field.other). */
+export const OTHER_REF = "__other__";
 
 /**
  * Dropdowns that drive workflow logic (probabilities, approvals, closing dates, SLA…), so new options
@@ -204,7 +208,7 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
       { name: "forecast_category", label: "Forecast category", type: "select", options: FORECAST_CATEGORIES, default: "Pipeline", filter: true },
       { name: "close_date", label: "Expected close", type: "date" },
       { name: "source", label: "Source", type: "select", options: LEAD_SOURCES },
-      { name: "next_step", label: "Next step", type: "text", full: true },
+      { name: "next_step", label: "Next step", type: "select", options: NEXT_STEPS, other: true },
       owner,
       { name: "description", label: "Description", type: "textarea", full: true },
     ],
@@ -220,6 +224,8 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
       { name: "material_id_type", label: "Material ID type", type: "select", options: MATERIAL_ID_TYPES, default: "NDC", required: true, filter: true },
       { name: "material_id", label: "Material ID", type: "text", required: true, list: true, help: "Unique: the NDC, EU MA or other number. No two products can share it." },
       { name: "name", label: "Product title", type: "text", required: true, full: true },
+      { name: "dosage_form", label: "Dosage form", type: "select", options: DOSAGE_FORMS, other: true, list: true, filter: true },
+      { name: "pack_size", label: "Pack size", type: "text", list: true, help: "e.g. 30 tablets, 1 x 10 mL vial, 28 capsules" },
       { name: "manufacturer", label: "MFG (manufacturer)", type: "text", list: true },
       { name: "lot_number", label: "LOT", type: "text", help: "Leave blank to print TBD." },
       { name: "expiry", label: "EXP (expiry)", type: "text", help: "Date or TBD. Leave blank to print TBD." },

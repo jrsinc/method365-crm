@@ -29,14 +29,14 @@ type Mode = "reply" | "replyAll" | "forward";
  * Reply / Reply all / Forward, plus Flag and Pin, for the open message.
  * Sending goes through the user's own mailbox; Outlook adds the original message underneath.
  */
-export function MailActions({ enabled, returnTo, listHref, flagged, pinned, isRead, folders, currentFolderId, replyTo, replyAllTo, actions }: {
+export function MailActions({ enabled, returnTo, listHref, flagged, pinned, isRead, folders, currentFolderId, recipients, actions }: {
   enabled: boolean; returnTo: string; flagged: boolean; pinned: boolean;
   /** The folder's list, for after a move or delete. */
   listHref: string; isRead: boolean;
   /** Folders the email can be moved to. */
   folders: { id: string; label: string }[]; currentFolderId?: string;
-  /** Who a reply / reply all goes to (shown so the user knows). */
-  replyTo: string; replyAllTo: string;
+  /** Who a reply / reply all goes to, filled in and editable, as Outlook does. */
+  recipients: { reply: { to: string; cc: string }; replyAll: { to: string; cc: string } };
   actions: {
     reply: (fd: FormData) => Promise<void>; replyAll: (fd: FormData) => Promise<void>; forward: (fd: FormData) => Promise<void>;
     flag: (fd: FormData) => Promise<void>; pin: (fd: FormData) => Promise<void>;
@@ -44,7 +44,7 @@ export function MailActions({ enabled, returnTo, listHref, flagged, pinned, isRe
   };
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
-  const [cc, setCc] = useState(false);
+  const [bcc, setBcc] = useState(false);
   const off = !enabled;
   const tip = off ? "Needs Mail.Send and Mail.ReadWrite approved by your Microsoft 365 admin" : undefined;
   const btn = (m: Mode, icon: string, label: string) => (
@@ -104,27 +104,27 @@ export function MailActions({ enabled, returnTo, listHref, flagged, pinned, isRe
         </div>
       )}
       {mode && enabled && (
-        <form action={actions[mode]} className="mt-3 space-y-2 rounded-lg border border-line bg-surface-2/50 p-3"
+        <form key={mode} action={actions[mode]} className="mt-3 space-y-2 rounded-lg border border-line bg-surface-2/50 p-3"
           onSubmit={() => setTimeout(() => setMode(null), 0)}>
           <input type="hidden" name="returnTo" value={returnTo} />
-          {mode === "forward" ? (
-            <div>
-              <Label htmlFor="mail_to" required>To</Label>
-              <Input id="mail_to" name="to" placeholder="name@company.com; another@company.com" autoFocus required />
-            </div>
-          ) : (
-            <p className="text-xs text-ink-2"><span className="text-ink-3">To:</span> {mode === "replyAll" ? replyAllTo : replyTo}</p>
-          )}
-          {cc ? (
-            <div><Label htmlFor="mail_cc">Cc</Label><Input id="mail_cc" name="cc" placeholder="name@company.com" /></div>
-          ) : (
-            <button type="button" className="text-xs text-accent hover:underline" onClick={() => setCc(true)}>Add Cc</button>
-          )}
-          <Textarea name="body" rows={6} autoFocus={mode !== "forward"} required={mode !== "forward"}
+          <div className="grid gap-2 sm:grid-cols-[48px_1fr] sm:items-center">
+            <Label htmlFor="mail_to" required>To</Label>
+            <Input id="mail_to" name="to" defaultValue={mode === "forward" ? "" : recipients[mode].to}
+              placeholder="name@company.com; another@company.com" autoFocus={mode === "forward"} required />
+            <Label htmlFor="mail_cc">Cc</Label>
+            <Input id="mail_cc" name="cc" defaultValue={mode === "replyAll" ? recipients.replyAll.cc : ""} placeholder="Optional; separate with ;" />
+            {bcc && <><Label htmlFor="mail_bcc">Bcc</Label><Input id="mail_bcc" name="bcc" placeholder="Hidden from the other recipients" /></>}
+          </div>
+          {!bcc && <button type="button" className="text-xs text-accent hover:underline" onClick={() => setBcc(true)}>Add Bcc</button>}
+          <Textarea name="body" rows={6} autoFocus={mode !== "forward"}
             placeholder={mode === "forward" ? "Add a message (optional)" : "Write your reply"} aria-label="Message" />
-          <p className="text-xs text-ink-3">The original message is added underneath, as in Outlook. It&apos;s sent from your mailbox and saved in Sent Items.</p>
-          <div className="flex gap-2">
-            <Button type="submit" variant="primary"><Icon name="send" size={14} />Send</Button>
+          <p className="text-xs text-ink-3">
+            Outlook adds its reply header and the original thread underneath, and your signature (Profile) goes under your message.
+            It&apos;s sent from your mailbox and kept in Sent Items. Save as draft to add formatting or check it first.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" name="intent" value="send" variant="primary"><Icon name="send" size={14} />Send</Button>
+            <Button type="submit" name="intent" value="draft"><Icon name="edit" size={14} />Save as draft</Button>
             <Button type="button" variant="ghost" onClick={() => setMode(null)}>Discard</Button>
           </div>
         </form>
