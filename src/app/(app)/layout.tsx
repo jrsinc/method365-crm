@@ -2,6 +2,7 @@ import { requireUser, can } from "@/lib/auth/dal";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { PasswordPromptHost } from "@/components/password-prompt";
+import { PlainCopy } from "@/components/plain-copy";
 import { logout } from "@/lib/auth/login";
 import { APP_NAME, APP_VERSION, ENV_LABEL, ROLE_LABELS } from "@/lib/config";
 import { hiddenHrefs, roleLabel } from "@/lib/roles";
@@ -48,6 +49,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         />
         <main className="px-4 py-5 pb-14 md:px-6">{children}</main>
         <PasswordPromptHost />
+        <PlainCopy />
       </div>
       {ENV_LABEL && (
         <div className="no-print fixed inset-x-0 bottom-0 z-30 bg-warn px-3 py-1 text-center text-xs font-medium text-white">

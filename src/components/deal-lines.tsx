@@ -51,7 +51,7 @@ export function DealLines({
               <tr className="border-b border-line text-left text-xs text-ink-2">
                 <th className="w-12 px-4 py-2 text-right font-medium">Sl No.</th>
                 <th className="px-3 py-2 font-medium">Description of Goods</th><th className="px-3 py-2 text-right font-medium">Quantity</th>
-                <th className="px-3 py-2 text-right font-medium">Unit price</th><th className="px-3 py-2 font-medium">per</th><th className="px-3 py-2 text-right font-medium">Amount</th><th className="px-3 py-2" />
+                <th className="px-3 py-2 text-right font-medium">Unit price</th><th className="px-3 py-2 font-medium">per</th><th className="px-3 py-2 text-right font-medium">Amount</th><th className="px-3 py-2" data-nocopy />
               </tr>
             </thead>
             <tbody>
@@ -68,7 +68,7 @@ export function DealLines({
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(l.target_price)}</td>
                   <td className="px-3 py-2">{unitOf(l.product_id ? l : null)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{fmt(l.target_price == null ? null : l.target_price * l.quantity)}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                  <td className="px-3 py-2 text-right whitespace-nowrap" data-nocopy>
                     <Link href={l.sourcing_href} className="text-xs text-accent hover:underline">Ask suppliers</Link>
                     {editable && (
                       <form action={removeAction.bind(null, l.id)} className="ml-3 inline" data-confirm-password="Enter your password to remove this product line.">
@@ -79,7 +79,7 @@ export function DealLines({
                 </tr>
               ))}
             </tbody>
-            <tfoot><tr><td colSpan={4} className="px-3 py-2 text-right text-xs text-ink-2">Total</td><td className="px-3 py-2 text-right font-semibold tabular-nums">{fmt(total)}</td><td /></tr></tfoot>
+            <tfoot><tr><td colSpan={5} className="px-3 py-2 text-right text-xs text-ink-2">Total</td><td className="px-3 py-2 text-right font-semibold tabular-nums">{fmt(total)}</td><td data-nocopy /></tr></tfoot>
           </table>
         </div>
       )}

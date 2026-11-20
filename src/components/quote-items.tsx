@@ -39,7 +39,7 @@ export function QuoteItems({
               <th className="px-3 py-2 font-medium w-36 text-right">Rate</th>
               <th className="px-3 py-2 font-medium w-16">per</th>
               <th className="px-3 py-2 font-medium w-32 text-right">Amount</th>
-              {editable && <th className="w-10" />}
+              {editable && <th className="w-10" data-nocopy />}
             </tr>
           </thead>
           <tbody>
@@ -95,7 +95,7 @@ export function QuoteItems({
                 <td className="px-3 py-2 pt-4">{unitOf(it)}</td>
                 <td className="px-3 py-2 text-right tabular-nums pt-4">{money2((Number(it.quantity) || 0) * (Number(it.unit_price) || 0), currency)}</td>
                 {editable && (
-                  <td className="px-1 py-2 pt-3">
+                  <td className="px-1 py-2 pt-3" data-nocopy>
                     <Button type="button" variant="ghost" size="sm" aria-label="Remove line" onClick={() => { setItems((xs) => xs.filter((_, j) => j !== i)); setDirty(true); }}>✕</Button>
                   </td>
                 )}
