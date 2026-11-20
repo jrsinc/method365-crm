@@ -24,9 +24,15 @@ export async function saveBranding(fd: FormData) {
   if (!(await confirmEdit(admin, fd.get("$confirm_password"), "settings", "branding"))) back("Nothing changed: that password isn't right.");
 
   for (const k of BRAND_KEYS) {
+    if (k === "name_on_pdf" || k === "name_size" || k === "name_color") continue;
     const max = k === "company_address" || k === "document_footer" ? 600 : 160;
     setBrand(k, String(fd.get(k) ?? "").trim().slice(0, max));
   }
+  // Company name on PDFs: shown or not, size (10–60 px) and colour (#RRGGBB).
+  setBrand("name_on_pdf", fd.get("name_on_pdf") === "show" ? "show" : "hide");
+  setBrand("name_size", String(Math.min(60, Math.max(10, Math.round(Number(fd.get("name_size")) || 24)))));
+  const color = String(fd.get("name_color") ?? "");
+  setBrand("name_color", /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "#18181a");
 
   let logoNote = "";
   const file = fd.get("logo");

@@ -1,5 +1,6 @@
 import { requireSuperAdmin } from "@/lib/auth/dal";
-import { getBranding, logoUrl } from "@/lib/branding";
+import { getBranding, logoUrl, nameStyle } from "@/lib/branding";
+import { ColorField } from "@/components/color-field";
 import { saveBranding } from "@/lib/actions/branding";
 import { str, type SP } from "@/lib/page-helpers";
 import { Button, Card, Input, Label, Notice, PageHeader, Textarea } from "@/components/ui";
@@ -10,13 +11,14 @@ export const metadata = { title: "Company branding" };
 /**
  * The customer company's name, logo and details (e.g. Jupiter, who uses method365 CRM as a service).
  * They show at the top of the menu and sign-in page ("Provided by Method365") and on every document
- * ("Prepared through method365 CRM"). Super Admins only.
+ * ("Powered by Method365"). Super Admins only.
  */
 export default async function BrandingPage({ searchParams }: { searchParams: Promise<SP> }) {
   await requireSuperAdmin();
   const msg = str((await searchParams), "msg");
   const b = getBranding();
   const logo = logoUrl(b);
+  const ns = nameStyle(b);
   const field = (k: keyof typeof b, label: string, props: { placeholder?: string; type?: string } = {}) => (
     <div>
       <Label htmlFor={`b_${k}`}>{label}</Label>
@@ -47,8 +49,8 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
           <div>
             <p className="mb-1.5 text-xs text-ink-3">Documents (quotes and PDFs)</p>
             <div className="rounded-lg border border-line bg-white p-3 text-[#18181a]">
-              {logo ? <img src={logo} alt="" className="mb-1 max-h-8 max-w-[140px] object-contain" />
-                : <p className="text-sm font-semibold">{b.company_name || "Your company"}</p>}
+              {logo && <img src={logo} alt="" className="mb-1 max-h-8 max-w-[140px] object-contain" />}
+              {ns.show && (b.company_name || !logo) && <p className="font-semibold leading-tight" style={{ fontSize: Math.round(ns.size * 0.6), color: ns.color }}>{b.company_name || "Your company"}</p>}
               <div className="my-2 h-6 rounded bg-[#f3f2ee]" />
               <p className="border-t border-[#e3e2dd] pt-1.5 text-[10px] text-[#7b7a74]">{PREPARED_BY}</p>
             </div>
@@ -77,6 +79,21 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
           <div className="grid gap-3 sm:grid-cols-2">
             {field("company_name", "Company name", { placeholder: "e.g. Jupiter Research Services" })}
             {field("company_tax_id", "Tax / VAT / GST number")}
+            <div className="space-y-3 rounded-lg border border-line p-3 sm:col-span-2">
+              <p className="text-sm font-medium">Company name on PDFs</p>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="name_on_pdf" value="show" defaultChecked={ns.show} className="h-4 w-4 accent-[var(--accent)]" />
+                Show the company name at the top of quotes and other PDFs
+              </label>
+              <div className="flex flex-wrap items-end gap-6">
+                <div>
+                  <Label htmlFor="b_name_size">Font size (px)</Label>
+                  <Input id="b_name_size" name="name_size" type="number" min={10} max={60} defaultValue={ns.size} className="w-24" />
+                </div>
+                <ColorField name="name_color" value={ns.color} label="Colour (RGB)" />
+              </div>
+              <p className="text-xs text-ink-3">With a logo, the name shows under it. Untick to show only the logo.</p>
+            </div>
             <div className="sm:col-span-2">
               <Label htmlFor="b_company_address">Address</Label>
               <Textarea id="b_company_address" name="company_address" rows={3} defaultValue={b.company_address} placeholder={"Street\nCity, State Postcode\nCountry"} />
@@ -89,7 +106,7 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
               <Textarea id="b_document_footer" name="document_footer" rows={2} defaultValue={b.document_footer} placeholder="e.g. Bank details, registered office, thank-you note" />
             </div>
           </div>
-          <p className="mt-3 text-xs text-ink-3">Every document ends with &ldquo;{PREPARED_BY}&rdquo;. That line can&apos;t be changed.</p>
+          <p className="mt-3 text-xs text-ink-3">Every document&apos;s footer ends with &ldquo;{PREPARED_BY}&rdquo;. That line can&apos;t be changed.</p>
         </Card>
         <Button type="submit" variant="primary">Save company branding</Button>
       </form>

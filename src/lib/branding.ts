@@ -9,11 +9,20 @@ import { all, run } from "./db";
 export type Branding = {
   company_name: string; company_address: string; company_phone: string; company_email: string;
   company_website: string; company_tax_id: string; document_footer: string;
+  /** The company name at the top of PDFs: "hide" to leave it out, its size in px and its colour (#RRGGBB). */
+  name_on_pdf: string; name_size: string; name_color: string;
   /** Cache-busting version of the logo, or "" when there is no logo. */
   logo_version: string;
 };
 
-export const BRAND_KEYS = ["company_name", "company_address", "company_phone", "company_email", "company_website", "company_tax_id", "document_footer"] as const;
+export const BRAND_KEYS = ["company_name", "company_address", "company_phone", "company_email", "company_website", "company_tax_id", "document_footer", "name_on_pdf", "name_size", "name_color"] as const;
+
+/** How the company name looks at the top of PDFs, with safe defaults. */
+export function nameStyle(b: Branding) {
+  const size = Math.min(60, Math.max(10, Number(b.name_size) || 24));
+  const color = /^#[0-9a-f]{6}$/i.test(b.name_color) ? b.name_color : "#18181a";
+  return { show: b.name_on_pdf !== "hide", size, color };
+}
 export const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 export const LOGO_MAX_BYTES = 1024 * 1024;
 

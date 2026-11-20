@@ -2,7 +2,7 @@ export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "method365 CRM";
 /** Method365 provides the CRM as a service to each customer company. These credits are fixed: not set by env or settings. */
 export const PROVIDER = "Method365";
 export const PROVIDED_BY = "Provided by Method365";
-export const PREPARED_BY = "Prepared through Method365 CRM";
+export const PREPARED_BY = "Powered by Method365";
 export const APP_VERSION = "v0.1.0";
 /** Shown in a banner at the bottom of every page when set, e.g. "Demo environment". */
 export const ENV_LABEL = process.env.NEXT_PUBLIC_ENV_LABEL ?? "Demo environment";

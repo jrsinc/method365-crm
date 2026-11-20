@@ -158,7 +158,7 @@ const SECTIONS: Section[] = [
       <>Create a quote from the opportunity, then add line items from the Product Master. Picking the account narrows the opportunity and contact lists.</>,
       <>Bill to and Ship to use the account&apos;s default address unless you choose Custom (or Same as bill to).</>,
       <>A discount above the limit needs a manager&apos;s approval before the quote can move past Submitted.</>,
-      <>Use <strong>Print / PDF</strong> to send it. The quote shows your company&apos;s logo and details, and ends with &ldquo;Prepared through Method365 CRM&rdquo;.</>,
+      <>Use <strong>Email to customer</strong> to send it with the PDF attached, or <strong>PDF</strong> to download it. The PDF is an image, so its text can&apos;t be copied. It shows your company&apos;s logo and details, and the footer ends with &ldquo;Powered by Method365&rdquo;.</>,
       <><L href="/pricing">Pricing</L> holds price books, customer contracts (a contract price beats the price book) and margin floors.</>,
     ],
     flow: (

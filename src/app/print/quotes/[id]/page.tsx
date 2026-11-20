@@ -8,7 +8,7 @@ import { date, money, money2 } from "@/lib/format";
 import { APP_NAME, PREPARED_BY } from "@/lib/config";
 import { PrintButton } from "./print-button";
 import { accountAddress } from "@/lib/addresses";
-import { getBranding, logoUrl } from "@/lib/branding";
+import { getBranding, logoUrl, nameStyle } from "@/lib/branding";
 import { LINE_GOODS_SQL, type GoodsInfo } from "@/lib/goods";
 import { GoodsTable } from "@/components/goods-table";
 
@@ -30,6 +30,7 @@ export default async function PrintQuote({ params }: { params: Promise<{ id: str
   const cur = (q.currency as string) || baseCurrency().code;
   const brand = getBranding();
   const logo = logoUrl(brand);
+  const ns = nameStyle(brand);
   const subtotal = Number(q.subtotal) || 0;
   const disc = subtotal * (Number(q.discount_pct) || 0) / 100;
   const tax = (subtotal - disc) * (Number(q.tax_pct) || 0) / 100;
@@ -46,7 +47,7 @@ export default async function PrintQuote({ params }: { params: Promise<{ id: str
         <div className="min-w-0">
           {/* The customer company's own logo and details (Company branding). */}
           {logo && <img src={logo} alt={`${brand.company_name || "Company"} logo`} className="mb-2 max-h-16 max-w-[240px] object-contain" />}
-          {(brand.company_name || !logo) && <p className="text-2xl font-semibold">{brand.company_name || APP_NAME}</p>}
+          {ns.show && (brand.company_name || !logo) && <p className="font-semibold leading-tight" style={{ fontSize: ns.size, color: ns.color }}>{brand.company_name || APP_NAME}</p>}
           {brand.company_address && <p className="mt-1 whitespace-pre-wrap text-sm text-[#52514e]">{brand.company_address}</p>}
           <p className="text-sm text-[#52514e]">{[brand.company_phone, brand.company_email, brand.company_website].filter(Boolean).join(" · ")}</p>
           {brand.company_tax_id && <p className="text-sm text-[#52514e]">Tax ID: {brand.company_tax_id}</p>}
