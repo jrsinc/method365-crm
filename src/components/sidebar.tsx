@@ -87,6 +87,7 @@ export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendin
         { href: "/import", label: "Import", icon: "upload", show: perms.bulk },
         { href: "/migration", label: "Migration", icon: "database", show: perms.admin },
         { href: "/branding", label: "Company branding", icon: "building", show: perms.superAdmin },
+        { href: "/outlook-addin", label: "Outlook add-in", icon: "mail", show: perms.superAdmin },
         { href: "/backup", label: "Backup & restore", icon: "database", show: perms.superAdmin },
         { href: "/audit-logs", label: "Audit Logs", icon: "shield", show: perms.admin },
         { href: "/settings", label: "Settings", icon: "gear", match: ["/settings", "/admin", "/profile", "/forms"] },

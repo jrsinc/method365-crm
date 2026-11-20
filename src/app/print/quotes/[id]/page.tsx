@@ -11,12 +11,16 @@ import { accountAddress } from "@/lib/addresses";
 import { getBranding, logoUrl, nameStyle } from "@/lib/branding";
 import { LINE_GOODS_SQL, type GoodsInfo } from "@/lib/goods";
 import { GoodsTable } from "@/components/goods-table";
+import { userFromTicket } from "@/lib/addin";
 
 export const metadata = { title: "Quote" };
 
-export default async function PrintQuote({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const user = await requireUser();
+export default async function PrintQuote({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
+  // The Outlook add-in opens this page without the sign-in cookie, with a 2-minute key for this one quote.
+  const ticket = typeof sp.ticket === "string" ? sp.ticket : "";
+  const user = ticket ? userFromTicket(ticket, id) : await requireUser();
+  if (!user) notFound();
   const q = getRecord(RESOURCES.quotes, user, id);
   if (!q) notFound();
   const items = all<{ description: string; quantity: number; unit_price: number; product_id: string | null } & GoodsInfo>(

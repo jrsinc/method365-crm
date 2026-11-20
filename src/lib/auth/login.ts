@@ -82,6 +82,14 @@ async function sendOtp(c: Challenge, user: { email: string; name: string }) {
   }
 }
 
+/** Where to go once signed in: the page that asked for sign-in (only the Outlook add-in's connect page), else the dashboard. */
+async function afterLogin() {
+  const jar = await cookies();
+  const next = jar.get("m365_after_login")?.value ?? "";
+  if (next) jar.delete("m365_after_login");
+  return next === "/addin/connect" ? next : "/dashboard";
+}
+
 export async function submitEmail(_: LoginState, form: FormData): Promise<LoginState> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { step: "email", error: "Enter a valid email address." };
@@ -146,7 +154,7 @@ export async function submitPassword(_: LoginState, form: FormData): Promise<Log
   await clearChallenge();
   await createSession(user.id);
   await audit({ id: user.id, email: user.email }, "login.success");
-  redirect("/dashboard");
+  redirect(await afterLogin());
 }
 
 export async function submitOtp(_: LoginState, form: FormData): Promise<LoginState> {
@@ -169,7 +177,7 @@ export async function submitOtp(_: LoginState, form: FormData): Promise<LoginSta
   await clearChallenge();
   await createSession(c.user_id);
   await audit({ id: c.user_id, email: c.email }, "login.success", null, null, "2fa");
-  redirect("/dashboard");
+  redirect(await afterLogin());
 }
 
 export async function resendOtp(): Promise<LoginState> {

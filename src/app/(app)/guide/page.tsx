@@ -202,6 +202,7 @@ const SECTIONS: Section[] = [
       <>On a message: <strong>Reply</strong>, <strong>Reply all</strong>, <strong>Forward</strong>, <strong>Flag</strong>, <strong>Pin</strong>, <strong>Mark read / unread</strong>, <strong>Move to</strong> another folder, or <strong>Delete</strong> (moves it to Deleted Items).</>,
       <>Drafts open as an editable email (To, CC, BCC, subject, message) with <strong>Send</strong>, <strong>Save draft</strong> and <strong>Discard draft</strong>.</>,
       <>From the thread: <strong>Log email</strong> on a record, <strong>Create lead</strong>, <strong>Create contact</strong>, <strong>Raise case</strong> or create a <strong>Follow-up task</strong>.</>,
+      <><strong>Inside Outlook itself:</strong> once your administrator installs the <strong>Method365 CRM</strong> add-in, click it on the Outlook ribbon. While reading an email it shows the sender&apos;s CRM records and lets you log the email or create an opportunity, lead, contact, account, case or task; while writing one it adds a product table, a quote PDF or your CRM signature. Sign in once with your CRM email and password.</>,
     ],
     tip: <>If the page says &ldquo;Not configured&rdquo;, an administrator still needs to register the app with Microsoft 365.</>,
   },

@@ -2,14 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 
-/** Removes anything that could run code; the rest of the email's formatting stays. */
-export function cleanHtml(html: string) {
-  return html
-    .replace(/<(script|iframe|object|embed|form)[\s\S]*?<\/\1>/gi, "")
-    .replace(/<(script|iframe|object|embed|base|meta|link)[^>]*>/gi, "")
-    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"');
-}
+import { cleanHtml } from "@/lib/html-clean";
 
 /**
  * Edits an email with its formatting (fonts, tables, the quoted thread, signature images), like Outlook's editor.
