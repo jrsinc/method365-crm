@@ -81,6 +81,18 @@
 
   function connect() {
     var url = location.origin + "/api/addin/start";
+    if (!Office.context || !Office.context.ui || !Office.context.ui.displayDialogAsync) {
+      signedOut("Outlook couldn't open the sign-in window. Close this panel, open it again and retry.");
+      return;
+    }
+    try {
+      dialog(url);
+    } catch (e) {
+      signedOut("Couldn't open the sign-in window (" + (e && e.message ? e.message : "unknown error") + "). Close this panel, open it again and retry.");
+    }
+  }
+
+  function dialog(url) {
     Office.context.ui.displayDialogAsync(url, { height: 70, width: 35, promptBeforeOpen: false }, function (res) {
       if (res.status !== Office.AsyncResultStatus.Succeeded) {
         signedOut("Couldn't open the sign-in window" + (res.error && res.error.message ? " (" + res.error.message + ")" : "") + ". Allow pop-ups for Outlook and try again.");
@@ -358,7 +370,22 @@
     }).catch(function (e) { if (e.message !== "signed-out") show(note("err", e.message)); });
   }
 
-  Office.onReady(function () {
+  /** Opened as a web page (not inside Outlook): Outlook's sign-in window and the email aren't available here. */
+  function notInOutlook() {
+    who.textContent = "";
+    show(h("div", { class: "card hero" },
+      h("img", { src: "icon-128.png", alt: "" }),
+      h("h1", { text: "Open this inside Outlook" }),
+      h("p", { class: "muted", text: "This is the Method365 CRM panel for Outlook. It only works inside Outlook, next to an email." }),
+      h("ol", { style: "text-align:left;margin:10px auto;max-width:460px;padding-left:20px;line-height:1.6" },
+        h("li", null, "Install the add-in: in the CRM go to Admin → Outlook add-in, download the manifest file, then in Outlook open ", h("b", { text: "aka.ms/olksideload" }), " → My add-ins → Custom Addins → Add a custom add-in → Add from file."),
+        h("li", null, "In Outlook, open an email and click ", h("b", { text: "Apps → Method365 CRM" }), "."),
+        h("li", null, "In the panel, click ", h("b", { text: "Sign in to the CRM" }), ".")),
+      h("p", { class: "muted small", text: "The panel works best in Outlook on the web and new Outlook for Windows." })));
+  }
+
+  Office.onReady(function (info) {
+    if (!info || !info.host || !Office.context || !Office.context.mailbox) { notInOutlook(); return; }
     // A pinned panel stays open while the user moves between emails.
     try { Office.context.mailbox.addHandlerAsync(Office.EventType.ItemChanged, function () { if (me) render(); }); } catch (e) { /* not supported */ }
     start();
