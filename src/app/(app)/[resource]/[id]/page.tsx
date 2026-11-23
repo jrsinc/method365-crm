@@ -61,7 +61,7 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
   const related = row.__related as { type: string; id: string; title: string; singular: string } | null;
 
   return (
-    <div className="max-w-6xl">
+    <div className="max-w-[1536px]">
       <PageHeader
         crumbs={[{ href: `/${def.key}`, label: def.label }]}
         title={<span className="flex items-center gap-2">{String(row.__title)} {status && <Badge>{status}</Badge>}</span>}
