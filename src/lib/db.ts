@@ -322,6 +322,13 @@ CREATE TABLE IF NOT EXISTS price_entries (
   created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS supplier_prices (
+  id TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  supplier_id TEXT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE, price REAL NOT NULL, currency TEXT,
+  min_qty REAL NOT NULL DEFAULT 1, lead_time_days INTEGER, valid_to TEXT, notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS contracts (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   product_id TEXT REFERENCES products(id) ON DELETE SET NULL, price REAL, valid_from TEXT, valid_to TEXT,
@@ -423,6 +430,12 @@ function migrate(db: DatabaseSync) {
   const cc = cols("contacts");
   for (const c of ["website", "address", "state"]) if (!cc.includes(c)) db.exec(`ALTER TABLE contacts ADD COLUMN ${c} TEXT`);
   if (!cols("leads").includes("state")) db.exec("ALTER TABLE leads ADD COLUMN state TEXT");
+  // Contact type (Existing customer, New lead…); zip codes on accounts and suppliers; product weight and size.
+  if (!cols("contacts").includes("contact_type")) db.exec("ALTER TABLE contacts ADD COLUMN contact_type TEXT");
+  if (!cols("accounts").includes("zip")) db.exec("ALTER TABLE accounts ADD COLUMN zip TEXT");
+  if (!cols("suppliers").includes("zip")) db.exec("ALTER TABLE suppliers ADD COLUMN zip TEXT");
+  const pc2 = cols("products");
+  for (const c of ["weight_g", "length_in", "width_in", "height_in"]) if (!pc2.includes(c)) db.exec(`ALTER TABLE products ADD COLUMN ${c} REAL`);
   if (!cols("leads").includes("website")) db.exec("ALTER TABLE leads ADD COLUMN website TEXT");
   if (!cols("suppliers").includes("state")) db.exec("ALTER TABLE suppliers ADD COLUMN state TEXT");
 
@@ -432,6 +445,12 @@ function migrate(db: DatabaseSync) {
   // Each user's email signature (added to emails the CRM writes), and the Outlook draft made for a quote.
   if (!cols("users").includes("email_signature")) db.exec("ALTER TABLE users ADD COLUMN email_signature TEXT");
   if (!cols("quotes").includes("email_draft_id")) db.exec("ALTER TABLE quotes ADD COLUMN email_draft_id TEXT");
+  // One quote format (PDF and email): per-line pack size, market and remarks; quote payment terms, Incoterm, handling charge, note.
+  const qic2 = cols("quote_items");
+  for (const c of ["pack_size", "market", "remark"]) if (!qic2.includes(c)) db.exec(`ALTER TABLE quote_items ADD COLUMN ${c} TEXT`);
+  const qc2 = cols("quotes");
+  for (const c of ["payment_terms", "incoterm", "customer_note"]) if (!qc2.includes(c)) db.exec(`ALTER TABLE quotes ADD COLUMN ${c} TEXT`);
+  if (!qc2.includes("handling_charge")) db.exec("ALTER TABLE quotes ADD COLUMN handling_charge REAL");
   // Opportunity lines keep their own lot and expiry (NULL = use the product's).
   const dlc = cols("deal_lines");
   for (const c of ["lot_number", "expiry"]) if (!dlc.includes(c)) db.exec(`ALTER TABLE deal_lines ADD COLUMN ${c} TEXT`);

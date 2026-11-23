@@ -3,7 +3,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { Badge, Button, Input, Select, cx } from "./ui";
 
-export type Cell = { text: string; badge?: boolean; href?: string; muted?: boolean };
+/** `empty`: the field has no value; the cell is highlighted red so missing data stands out. */
+export type Cell = { text: string; badge?: boolean; href?: string; muted?: boolean; empty?: boolean };
 export type Column = { key: string; label: string; sortHref?: string; sorted?: "asc" | "desc" | null; align?: "right" };
 
 export function BulkTable({
@@ -95,7 +96,8 @@ export function BulkTable({
                 )}
                 <td className="px-3 py-2 text-right tabular-nums text-ink-3">{startIndex + n + 1}</td>
                 {r.cells.map((c, i) => (
-                  <td key={i} className={cx("px-3 py-2 whitespace-nowrap max-w-[280px] truncate", columns[i]?.align === "right" && "text-right tabular-nums", c.muted && "text-ink-3")}>
+                  <td key={i} className={cx("px-3 py-2 whitespace-nowrap max-w-[280px] truncate", columns[i]?.align === "right" && "text-right tabular-nums", c.muted && "text-ink-3", c.empty && "bg-danger-soft text-danger")}
+                    title={c.empty ? `${columns[i]?.label ?? "This field"} is empty` : undefined}>
                     {i === 0 ? (
                       <Link href={r.href} className="font-medium text-accent hover:underline">{c.text}</Link>
                     ) : c.href ? (

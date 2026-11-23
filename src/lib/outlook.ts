@@ -306,7 +306,8 @@ export const safeFolder = (f: string) => (/^[A-Za-z0-9_=+\-/.]{1,400}$/.test(f) 
 const LIST_FIELDS = "id,subject,bodyPreview,receivedDateTime,isRead,hasAttachments,conversationId,from,toRecipients,flag";
 const FULL_FIELDS = `${LIST_FIELDS},body,ccRecipients,bccRecipients,webLink,sentDateTime,isDraft`;
 
-export async function listMessages(userId: string, folder: string, opts: { unread?: boolean; flagged?: boolean; search?: string; page?: number } = {}) {
+/** Messages in one folder; with `allFolders` and a search, every folder in the mailbox is searched. */
+export async function listMessages(userId: string, folder: string, opts: { unread?: boolean; flagged?: boolean; search?: string; page?: number; allFolders?: boolean } = {}) {
   const qs = new URLSearchParams({ $top: "50", $select: LIST_FIELDS, $expand: PIN_EXPAND });
   if (opts.search) qs.set("$search", `"${opts.search.replace(/"/g, "")}"`);
   else {
@@ -316,7 +317,8 @@ export async function listMessages(userId: string, folder: string, opts: { unrea
     if (opts.flagged) qs.set("$filter", "receivedDateTime ge 1900-01-01T00:00:00Z and flag/flagStatus eq 'flagged'");
     else if (opts.unread) qs.set("$filter", "isRead eq false");
   }
-  const r = await graph<{ value: MailSummary[]; "@odata.nextLink"?: string }>(userId, `/me/mailFolders/${encodeURIComponent(safeFolder(folder))}/messages?${qs}`);
+  const path = opts.allFolders && opts.search ? "/me/messages" : `/me/mailFolders/${encodeURIComponent(safeFolder(folder))}/messages`;
+  const r = await graph<{ value: MailSummary[]; "@odata.nextLink"?: string }>(userId, `${path}?${qs}`);
   const messages = r.value.map(markPinned);
   // Like Outlook: pinned mail stays at the top of the list.
   return { messages: [...messages.filter((m) => m.pinned), ...messages.filter((m) => !m.pinned)], more: !!r["@odata.nextLink"] };

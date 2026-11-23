@@ -12,7 +12,7 @@ const TITLES: [string, string][] = [
   ["/opportunities", "Opportunities"], ["/pipeline", "Pipeline Board"], ["/quotes", "Quotes"], ["/pricing", "Pricing"],
   ["/price-books", "Pricing"], ["/price-entries", "Pricing"], ["/contracts", "Pricing"], ["/margin-floors", "Pricing"],
   ["/catalogue", "Product Master"], ["/cases", "Cases"], ["/campaigns", "Campaigns"], ["/approvals", "Approvals"],
-  ["/forecast", "Forecast"], ["/sourcing", "Sourcing"], ["/suppliers", "Suppliers"], ["/activities", "Activities"], ["/tasks", "Tasks"],
+  ["/forecast", "Forecast"], ["/sourcing", "Sourcing"], ["/suppliers", "Suppliers"], ["/supplier-prices", "Suppliers"], ["/activities", "Activities"], ["/tasks", "Tasks"],
   ["/calendar", "Calendar"], ["/outlook", "Outlook"], ["/documents", "Documents"], ["/import", "Import"],
   ["/migration", "Migration"], ["/audit-logs", "Audit Logs"], ["/settings", "Settings"], ["/admin", "Settings"],
   ["/profile", "Settings"], ["/forms", "Web Forms"], ["/search", "Search"], ["/guide", "User Guide"],

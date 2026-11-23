@@ -36,7 +36,8 @@ import { draftSourcingInquiry } from "@/lib/actions/sourcing";
 import { connection as outlookConnection, mailActionsEnabled } from "@/lib/outlook";
 import { QuoteEmailForm } from "@/components/quote-email";
 import { draftQuoteEmail } from "@/lib/actions/quote-mail";
-import { getBranding } from "@/lib/branding";
+import { getBranding, nameStyle } from "@/lib/branding";
+import { quoteEmailTable, TABLE_MARKER } from "@/lib/quote-lines";
 
 export async function generateMetadata({ params }: { params: Promise<{ resource: string; id: string }> }) {
   const def = getResource((await params).resource);
@@ -396,13 +397,17 @@ function RelatedTable({ parent, parentId, rel, user }: { parent: ResourceDef; pa
                 <tr key={r.id as string} className="border-b border-line last:border-0">
                   <td className="px-4 py-2 text-right tabular-nums text-ink-3">{n + 1}</td>
                   <td className="px-3 py-2"><Link href={`/${def.key}/${r.id}`} className="font-medium text-accent hover:underline">{String(r.__title)}</Link></td>
-                  {cols.map((f) => (
-                    <td key={f.name} className="px-3 py-2 whitespace-nowrap text-ink-2">
+                  {cols.map((f) => {
+                    // Empty fields are highlighted red so missing data stands out.
+                    const empty = f.type !== "checkbox" && (r[f.name] == null || String(r[f.name]).trim() === "");
+                    return (
+                    <td key={f.name} className={cx("px-3 py-2 whitespace-nowrap", empty ? "bg-danger-soft text-danger" : "text-ink-2")} title={empty ? `${f.label} is empty` : undefined}>
                       {def.key === "quotes" && f.name === "status" && canEdit(def, user, r)
                         ? <QuickStatus resource="quotes" id={r.id as string} field="status" value={String(r.status)} options={QUOTE_STATUSES} label={`${String(r.__title)} status`} />
-                        : f.type === "select" ? <Badge>{fieldText(f, r, baseCode)}</Badge> : fieldText(f, r, baseCode)}
+                        : f.type === "select" && !empty ? <Badge>{fieldText(f, r, baseCode)}</Badge> : fieldText(f, r, baseCode)}
                     </td>
-                  ))}
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -564,9 +569,11 @@ function QuoteEmailCard({ row, user }: { row: Row; user: SessionUser }) {
   const lines = [
     `Dear ${contact?.first_name || "Sir/Madam"},`,
     "",
-    `Thank you for your enquiry. Please find attached our quote ${number}${account ? ` for ${account.name}` : ""}, for a total of ${money2(row.total, cur)}${row.valid_until ? `, valid until ${date(row.valid_until)}` : ""}.`,
+    `Thank you for your enquiry. Please see our quote ${number}${account ? ` for ${account.name}` : ""} below, for a total of ${money2(row.total, cur)}${row.valid_until ? `, valid until ${date(row.valid_until)}` : ""}. The quote PDF is attached.`,
     "",
-    "Please let us know if you have any questions or would like to go ahead.",
+    TABLE_MARKER,
+    "",
+    "Please let us know if you have any questions or would like to go ahead. We look forward to your order.",
     "",
     "Kind regards,",
     user.name,
@@ -579,6 +586,7 @@ function QuoteEmailCard({ row, user }: { row: Row; user: SessionUser }) {
         to={contact?.email || account?.email || ""}
         subject={`Quote ${number} from ${company}`}
         body={lines.join("\n")}
+        tableHtml={quoteEmailTable(row, { accent: nameStyle(brand).color !== "#18181a" ? nameStyle(brand).color : undefined }).html}
         canDraft={!!outlookConnection(user.id) && mailActionsEnabled(user.id)}
       />
     </Card></div>
@@ -602,6 +610,7 @@ function QuoteSection({ row, editable }: { row: Row; editable: boolean }) {
         currency={(row.currency as string) || baseCurrency().code}
         discountPct={Number(row.discount_pct) || 0}
         taxPct={Number(row.tax_pct) || 0}
+        handling={Number(row.handling_charge) || 0}
         editable={editable}
       />
     </Card>

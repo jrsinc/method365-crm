@@ -8,9 +8,10 @@ import { Icon } from "./icons";
  * Write the quote email to the customer. On submit the quote's PDF (an image PDF, text can't be copied) is made
  * from the print page in a hidden frame and sent along, and the email lands in the user's Outlook Drafts.
  */
-export function QuoteEmailForm({ quoteId, action, to, subject, body, canDraft }: {
-  quoteId: string; action: (fd: FormData) => Promise<void>; to: string; subject: string; body: string; canDraft: boolean;
+export function QuoteEmailForm({ quoteId, action, to, subject, body, tableHtml, canDraft }: {
+  quoteId: string; action: (fd: FormData) => Promise<void>; to: string; subject: string; body: string; tableHtml: string; canDraft: boolean;
 }) {
+  const [withTable, setWithTable] = useState(true);
   const form = useRef<HTMLFormElement>(null);
   const pdfField = useRef<HTMLInputElement>(null);
   const [attach, setAttach] = useState(true);
@@ -59,7 +60,18 @@ export function QuoteEmailForm({ quoteId, action, to, subject, body, canDraft }:
         <Label htmlFor="qe_bcc">BCC</Label><Input id="qe_bcc" name="bcc" placeholder="Optional; hidden from the customer" />
         <Label htmlFor="qe_subject">Subject</Label><Input id="qe_subject" name="subject" defaultValue={subject} />
       </div>
-      <Textarea name="body" rows={9} defaultValue={body} aria-label="Message" />
+      <Textarea name="body" rows={11} defaultValue={body} aria-label="Message" />
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="table" value="1" checked={withTable} onChange={(e) => setWithTable(e.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
+        <span>Put the product list with final prices in the email, where the text says <code className="rounded bg-surface-2 px-1">[Product table]</code></span>
+      </label>
+      {withTable && (
+        <details className="rounded-md border border-line">
+          <summary className="cursor-pointer px-3 py-2 text-sm text-ink-2 hover:text-ink">Preview the product table</summary>
+          {/* Built on the server from this quote's lines; same columns as the PDF. */}
+          <div className="overflow-x-auto bg-white p-3 text-black" dangerouslySetInnerHTML={{ __html: tableHtml }} />
+        </details>
+      )}
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" name="attach" value="1" checked={attach} onChange={(e) => setAttach(e.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
         Attach the quote as PDF (an image PDF: the customer can read and print it, but not copy its text)

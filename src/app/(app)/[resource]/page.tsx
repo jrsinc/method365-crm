@@ -59,6 +59,7 @@ export default async function ListPage({ params, searchParams }: { params: Promi
           const refId = r[f.name] as string | null;
           return {
             text: fieldText(f, r, baseCode),
+            empty: f.type !== "checkbox" && (r[f.name] == null || String(r[f.name]).trim() === ""),
             badge: f.type === "select" || f.type === "checkbox",
             muted: f.name === "number",
             href: f.type === "ref" && refId ? `/${f.ref}/${refId}` : undefined,

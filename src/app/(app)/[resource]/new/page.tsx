@@ -7,6 +7,10 @@ import { formOptions, str, type SP } from "@/lib/page-helpers";
 import { RecordForm } from "@/components/record-form";
 import { peekNumber } from "@/lib/settings";
 import { Card, Label, PageHeader, Select } from "@/components/ui";
+import { QuoteItems } from "@/components/quote-items";
+import { all } from "@/lib/db";
+import { baseCurrency } from "@/lib/settings";
+import { GOODS_SQL, type GoodsInfo } from "@/lib/goods";
 
 export default async function NewPage({ params, searchParams }: { params: Promise<{ resource: string }>; searchParams: Promise<SP> }) {
   const [{ resource }, sp] = await Promise.all([params, searchParams]);
@@ -50,6 +54,22 @@ export default async function NewPage({ params, searchParams }: { params: Promis
       <p className="mt-1 text-xs text-ink-3">{def.key === "tasks" ? "Leave it as None for a general or internal task (e.g. prepare a report). Linked tasks also show on that record's timeline." : "It then shows on that record's timeline."}</p>
     </div>
   ) : null;
+  // New quote: add the line items on the same form; they're saved with the quote.
+  const quoteLines = def.key === "quotes" ? (
+    <div className="rounded-lg border border-line">
+      <p className="border-b border-line px-4 py-2.5 font-semibold">Line items</p>
+      <QuoteItems
+        initial={[]}
+        products={all<{ id: string; name: string; unit_price: number; active: number } & GoodsInfo>(
+          `SELECT p.id, p.name, p.unit_price, p.active, ${GOODS_SQL} FROM products p WHERE p.active = 1 ORDER BY p.name`)}
+        currency={baseCurrency().code}
+        discountPct={0}
+        taxPct={0}
+        editable
+        formMode
+      />
+    </div>
+  ) : null;
   const back = str(sp, "returnTo");
   if (back.startsWith("/") && !back.startsWith("//")) hidden.returnTo = back;
 
@@ -71,6 +91,7 @@ export default async function NewPage({ params, searchParams }: { params: Promis
           submitLabel={`Create ${def.singular.toLowerCase()}`}
           canAssign={can(user, "records.assign") || def.key === "tasks"}
           before={relatedPicker}
+          after={quoteLines}
         />
       </Card>
     </div>

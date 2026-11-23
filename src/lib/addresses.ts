@@ -2,14 +2,14 @@ import "server-only";
 import { all, get } from "./db";
 
 type AccountAddr = {
-  name: string; address: string | null; city: string | null; state: string | null; country: string | null;
+  name: string; address: string | null; city: string | null; state: string | null; zip: string | null; country: string | null;
   billing_address: string | null; shipping_address: string | null;
 };
-const SQL = "SELECT name, address, city, state, country, billing_address, shipping_address FROM accounts";
+const SQL = "SELECT name, address, city, state, zip, country, billing_address, shipping_address FROM accounts";
 
-/** The account's main address as lines: street, then "City, State", then country. */
+/** The account's main address as lines: street, then "City, State Zip", then country. */
 const composed = (a: AccountAddr) =>
-  [a.address, [a.city, a.state].filter(Boolean).join(", "), a.country].filter((x) => x && String(x).trim()).join("\n");
+  [a.address, [a.city, [a.state, a.zip].filter(Boolean).join(" ")].filter(Boolean).join(", "), a.country].filter((x) => x && String(x).trim()).join("\n");
 
 /** An account's default bill-to / ship-to address for quotes. Ship-to falls back to bill-to, which falls back to the main address. */
 export function defaultsFor(a: AccountAddr) {
@@ -27,6 +27,6 @@ export function accountAddress(accountId: string | null | undefined, kind: "bill
 /** Defaults for every account, for the quote form's live preview. */
 export function allAccountAddresses() {
   const out: Record<string, { bill: string; ship: string }> = {};
-  for (const a of all<AccountAddr & { id: string }>(`SELECT id, name, address, city, state, country, billing_address, shipping_address FROM accounts`)) out[a.id] = defaultsFor(a);
+  for (const a of all<AccountAddr & { id: string }>(`SELECT id, name, address, city, state, zip, country, billing_address, shipping_address FROM accounts`)) out[a.id] = defaultsFor(a);
   return out;
 }

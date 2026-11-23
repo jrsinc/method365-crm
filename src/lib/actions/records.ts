@@ -15,6 +15,8 @@ import { canQuickAdd } from "../page-helpers";
 import { addOption, allOptions, extendable } from "../picklists";
 import { logChange } from "../reviews";
 import { syncDiscountApproval } from "../discounts";
+import { writeQuoteItems } from "../quote-lines";
+import { recalcQuote } from "../records";
 import { notify } from "../notify";
 
 /** Lets the password dialog tell the user straight away if they mistyped. The edit itself re-checks. */
@@ -192,9 +194,18 @@ export async function saveRecord(key: ResourceKey, id: string | null, _prev: For
     const r = insertRecord(def, user, data, extra);
     if (!r.ok) return { errors: r.errors, values: original, error: r.error ?? "Please fix the highlighted fields." };
     savedId = r.id;
-    if (key === "quotes") syncDiscountApproval(user, savedId);
+    // A new quote: the line items entered on the same form.
+    let lines = 0;
+    if (key === "quotes") {
+      try {
+        const items = JSON.parse(String(fd.get("$items") ?? "[]"));
+        if (Array.isArray(items) && items.length) lines = writeQuoteItems(savedId, items);
+      } catch { /* no lines */ }
+      if (!lines) recalcQuote(savedId); // the handling charge alone still counts in the total
+      syncDiscountApproval(user, savedId);
+    }
     await savePicklists(def, user, pick.allow);
-    await audit(user, "create", key, savedId);
+    await audit(user, "create", key, savedId, lines ? { lines } : undefined);
   }
   revalidatePath("/", "layout");
   redirect(safeReturn(fd.get("returnTo")) ?? `/${key}/${savedId}`);

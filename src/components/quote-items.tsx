@@ -4,15 +4,19 @@ import { saveQuoteItems, type QuoteItemInput } from "@/lib/actions/sales";
 import { askPassword } from "./password-prompt";
 import { Button, Input, Notice, Select } from "./ui";
 import { money2 } from "@/lib/format";
-import { materialLabel, unitOf, type GoodsInfo } from "@/lib/goods";
+import { marketOf, materialLabel, unitOf, type GoodsInfo } from "@/lib/goods";
 import { GoodsDescription } from "./goods-table";
 
 type Product = { id: string; name: string; unit_price: number; active: number } & GoodsInfo;
 
+/**
+ * A quote's line items. On a saved quote they're saved with "Save line items"; with `formMode` (the New quote form)
+ * they go along with the form in a hidden "$items" field and are saved with the quote.
+ */
 export function QuoteItems({
-  quoteId, initial, products, currency, discountPct, taxPct, editable,
+  quoteId, initial, products, currency, discountPct, taxPct, handling = 0, editable, formMode = false,
 }: {
-  quoteId: string; initial: QuoteItemInput[]; products: Product[]; currency: string; discountPct: number; taxPct: number; editable: boolean;
+  quoteId?: string; initial: QuoteItemInput[]; products: Product[]; currency: string; discountPct: number; taxPct: number; handling?: number; editable: boolean; formMode?: boolean;
 }) {
   const [items, setItems] = useState<QuoteItemInput[]>(initial);
   const [dirty, setDirty] = useState(false);
@@ -24,11 +28,12 @@ export function QuoteItems({
   };
   const subtotal = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unit_price) || 0), 0);
   const afterDiscount =subtotal * (1 - discountPct / 100);
-  const total = afterDiscount * (1 + taxPct / 100);
+  const total = afterDiscount * (1 + taxPct / 100) + handling;
 
   return (
     <div>
       {msg && <div className="px-4 pt-4"><Notice tone={msg.tone}>{msg.text}</Notice></div>}
+      {formMode && <input type="hidden" name="$items" value={JSON.stringify(items)} />}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -59,7 +64,7 @@ export function QuoteItems({
                             product_id: p.id, description: p.name, unit_price: p.unit_price,
                             material_id_type: p.material_id_type, material_id: p.material_id,
                             manufacturer: p.manufacturer ?? "", lot_number: p.lot_number ?? "", expiry: p.expiry ?? "",
-                            hts_code: p.hts_code ?? "", uom: p.uom ?? "",
+                            hts_code: p.hts_code ?? "", uom: p.uom ?? "", pack_size: p.pack_size ?? "",
                           } : { product_id: null, material_id_type: null, material_id: null });
                         }}
                       >
@@ -74,17 +79,25 @@ export function QuoteItems({
                       ) : (
                         <Input aria-label="Product title" value={it.description} onChange={(e) => update(i, { description: e.target.value })} placeholder="Product title" />
                       )}
-                      <div className="grid grid-cols-2 gap-1 sm:grid-cols-5">
-                        {([["manufacturer", "MFG"], ["lot_number", "LOT"], ["expiry", "EXP"], ["hts_code", "HTS"], ["uom", "Unit (per)"]] as const).map(([k, label]) => (
-                          <label key={k} className={`text-[11px] text-ink-3 ${k === "manufacturer" ? "col-span-2 sm:col-span-2" : ""}`}>
+                      <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+                        {([["manufacturer", "MFG"], ["pack_size", "Pack size"], ["market", "Market"], ["lot_number", "LOT"], ["expiry", "EXP"], ["hts_code", "HTS"], ["uom", "Unit (per)"], ["remark", "Remarks"]] as const).map(([k, label]) => (
+                          <label key={k} className={`text-[11px] text-ink-3 ${k === "manufacturer" || k === "remark" ? "col-span-2" : ""}`}>
                             {label}
-                            <Input aria-label={label} value={it[k] ?? ""} placeholder={k === "uom" ? "EACH" : k === "lot_number" || k === "expiry" ? "TBD" : ""}
+                            <Input aria-label={label} value={it[k] ?? ""}
+                              placeholder={k === "uom" ? "EACH" : k === "lot_number" || k === "expiry" ? "TBD" : k === "pack_size" ? "e.g. 28 tablets" : k === "market" ? (marketOf({ ...it, market: "" }) || "e.g. USA") : k === "remark" ? "e.g. 100+ available" : ""}
                               onChange={(e) => update(i, { [k]: e.target.value })} className="h-8 text-xs" />
                           </label>
                         ))}
                       </div>
                     </div>
-                  ) : <GoodsDescription title={it.description} goods={it} />}
+                  ) : (
+                    <>
+                      <GoodsDescription title={it.description} goods={it} />
+                      {(it.pack_size || marketOf(it) || it.remark) && (
+                        <p className="text-xs leading-5 opacity-80">{[it.pack_size && `Pack: ${it.pack_size}`, marketOf(it) && `Market: ${marketOf(it)}`, it.remark].filter(Boolean).join(" · ")}</p>
+                      )}
+                    </>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-right">
                   {editable ? <Input aria-label="Quantity" type="number" min={0} step="any" className="text-right" value={it.quantity} onChange={(e) => update(i, { quantity: Number(e.target.value) })} /> : it.quantity}
@@ -112,7 +125,7 @@ export function QuoteItems({
           {editable && (
             <>
               <Button type="button" onClick={() => { setItems((xs) => [...xs, { product_id: null, description: "", quantity: 1, unit_price: 0 }]); setDirty(true); }}>Add line</Button>
-              <Button
+              {!formMode && quoteId && <Button
                 type="button" variant="primary" disabled={!dirty || pending}
                 onClick={async () => {
                   const pw = await askPassword("Enter your password to save the quote's line items.");
@@ -125,15 +138,17 @@ export function QuoteItems({
                 }}
               >
                 {pending ? "Saving…" : "Save line items"}
-              </Button>
+              </Button>}
             </>
           )}
         </div>
         <dl className="min-w-56 space-y-1 text-sm tabular-nums">
           <div className="flex justify-between gap-6"><dt className="text-ink-2">Subtotal</dt><dd>{money2(subtotal, currency)}</dd></div>
           {discountPct > 0 && <div className="flex justify-between gap-6"><dt className="text-ink-2">Discount ({discountPct}%)</dt><dd>−{money2(subtotal - afterDiscount, currency)}</dd></div>}
-          {taxPct > 0 && <div className="flex justify-between gap-6"><dt className="text-ink-2">Tax ({taxPct}%)</dt><dd>{money2(total - afterDiscount, currency)}</dd></div>}
+          {taxPct > 0 && <div className="flex justify-between gap-6"><dt className="text-ink-2">Tax ({taxPct}%)</dt><dd>{money2(total - handling - afterDiscount, currency)}</dd></div>}
+          {handling > 0 && <div className="flex justify-between gap-6"><dt className="text-ink-2">Handling</dt><dd>{money2(handling, currency)}</dd></div>}
           <div className="flex justify-between gap-6 border-t border-line pt-1 font-semibold"><dt>Total</dt><dd>{money2(total, currency)}</dd></div>
+          {formMode && <p className="max-w-56 text-xs font-normal text-ink-3">Discount, tax and handling from the fields above are applied when the quote is saved.</p>}
         </dl>
       </div>
     </div>

@@ -373,11 +373,12 @@ function applyRules(def: ResourceDef, data: Record<string, string | number | nul
 }
 
 export function recalcQuote(quoteId: string) {
-  const q = get<{ discount_pct: number; tax_pct: number }>("SELECT discount_pct, tax_pct FROM quotes WHERE id = ?", quoteId);
+  const q = get<{ discount_pct: number; tax_pct: number; handling_charge: number | null }>("SELECT discount_pct, tax_pct, handling_charge FROM quotes WHERE id = ?", quoteId);
   if (!q) return;
   const { s } = get<{ s: number }>("SELECT COALESCE(SUM(quantity * unit_price), 0) AS s FROM quote_items WHERE quote_id = ?", quoteId)!;
   const afterDiscount = s * (1 - (q.discount_pct || 0) / 100);
-  const total = afterDiscount * (1 + (q.tax_pct || 0) / 100);
+  // Handling is added after discount and tax (a flat charge, e.g. per sourcing market).
+  const total = afterDiscount * (1 + (q.tax_pct || 0) / 100) + (Number(q.handling_charge) || 0);
   run("UPDATE quotes SET subtotal = ?, total = ?, updated_at = datetime('now') WHERE id = ?", round2(s), round2(total), quoteId);
 }
 

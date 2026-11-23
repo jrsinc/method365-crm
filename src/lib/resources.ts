@@ -1,6 +1,6 @@
 import {
   ACCOUNT_TYPES, ACTIVITY_TYPES, APPROVAL_ROLES, APPROVAL_STATUSES, CAMPAIGN_CHANNELS, CAMPAIGN_STATUSES, CAMPAIGN_TYPES,
-  CASE_PRIORITIES, CASE_STATUSES, CASE_TYPES, CONTACT_STATUSES, DEAL_STAGES, DOCUMENT_ACCESS, DOCUMENT_CATEGORIES,
+  CASE_PRIORITIES, CASE_STATUSES, CASE_TYPES, CONTACT_STATUSES, CONTACT_TYPES, DEAL_STAGES, DOCUMENT_ACCESS, DOCUMENT_CATEGORIES,
   FORECAST_CATEGORIES, INDUSTRIES, LEAD_RATINGS, LEAD_SOURCES, LEAD_STATUSES, MIGRATION_ENTITIES, MIGRATION_STATUSES, NEXT_STEPS, DOSAGE_FORMS,
   PRICE_SEGMENTS, PRODUCT_STATUSES, PRODUCT_TYPES, QUOTE_STATUSES, SOURCING_STATUSES, SUPPLIER_CATEGORIES, SUPPLIER_STATUSES,
   TASK_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES,
@@ -43,7 +43,7 @@ export type Field = {
 export type ResourceKey =
   | "leads" | "contacts" | "accounts" | "opportunities" | "catalogue" | "quotes" | "tasks" | "activities" | "forms"
   | "cases" | "campaigns" | "approvals" | "sourcing" | "suppliers" | "documents"
-  | "price-books" | "price-entries" | "contracts" | "margin-floors" | "migration";
+  | "price-books" | "price-entries" | "supplier-prices" | "contracts" | "margin-floors" | "migration";
 
 /** Reference dropdowns that can create a missing record on the spot from just its name. */
 export const QUICK_ADD: ResourceKey[] = ["accounts", "suppliers", "contacts", "opportunities", "catalogue", "price-books"];
@@ -125,7 +125,7 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
     titleSql: (a) => `TRIM(${a}.first_name || ' ' || COALESCE(${a}.last_name,''))`,
     searchable: ["number", "first_name", "last_name", "email", "phone", "mobile", "title"],
     defaultSort: "created_at", timeline: true, importable: true,
-    bulkFields: ["status"],
+    bulkFields: ["contact_type", "status"],
     related: [
       { resource: "opportunities", fk: "contact_id", label: "Opportunities" },
       { resource: "quotes", fk: "contact_id", label: "Quotes" },
@@ -135,6 +135,7 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
       { name: "first_name", label: "First name", type: "text", required: true },
       { name: "last_name", label: "Last name", type: "text" },
       { name: "account_id", label: "Company", type: "ref", ref: "accounts", list: true },
+      { name: "contact_type", label: "Type", type: "select", options: CONTACT_TYPES, list: true, filter: true, help: "e.g. Existing customer or New lead. Pick \"+ Add new option\" for another type." },
       { name: "title", label: "Job title", type: "text" },
       { name: "department", label: "Department", type: "text" },
       { name: "email", label: "Email", type: "email", list: true },
@@ -177,6 +178,7 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
       { name: "country", label: "Country", type: "country" },
       { name: "state", label: "State / region", type: "state", countryField: "country" },
       { name: "city", label: "City", type: "text" },
+      { name: "zip", label: "Zip / postal code", type: "text" },
       { name: "billing_address", label: "Default bill-to address", type: "textarea", help: "Used on quotes. Leave blank to use the address above." },
       { name: "shipping_address", label: "Default ship-to address", type: "textarea", help: "Used on quotes. Leave blank to use the bill-to address." },
       owner,
@@ -220,6 +222,7 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
     searchable: ["material_id", "sku", "name", "family", "manufacturer", "hts_code"],
     defaultSort: "name", importable: true,
     bulkFields: ["status", "type"],
+    related: [{ resource: "supplier-prices", fk: "product_id", label: "Supplier prices" }],
     fields: [
       { name: "material_id_type", label: "Material ID type", type: "select", options: MATERIAL_ID_TYPES, default: "NDC", required: true, filter: true },
       { name: "material_id", label: "Material ID", type: "text", required: true, list: true, help: "Unique: the NDC, EU MA or other number. No two products can share it." },
@@ -230,6 +233,10 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
       { name: "lot_number", label: "LOT", type: "text", help: "Leave blank to print TBD." },
       { name: "expiry", label: "EXP (expiry)", type: "text", help: "Date or TBD. Leave blank to print TBD." },
       { name: "hts_code", label: "HTS code", type: "text", list: true },
+      { name: "weight_g", label: "Weight (g)", type: "number", help: "Weight of one unit in grams." },
+      { name: "length_in", label: "Length (in)", type: "number" },
+      { name: "width_in", label: "Width (in)", type: "number" },
+      { name: "height_in", label: "Height (in)", type: "number" },
       { name: "uom", label: "Unit (per)", type: "text", default: "EACH", help: "Printed in the \"per\" column, e.g. EACH, BOX, VIAL." },
       { name: "sku", label: "Code", type: "text" },
       { name: "type", label: "Type", type: "select", options: PRODUCT_TYPES, default: "Product", required: true, list: true, filter: true },
@@ -261,10 +268,15 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
       { name: "valid_until", label: "Valid until", type: "date", list: true },
       { name: "discount_pct", label: "Discount", type: "percent", default: 0 },
       { name: "tax_pct", label: "Tax", type: "percent", default: 0 },
+      { name: "handling_charge", label: "Handling charge", type: "money", currencyField: "currency", help: "Flat amount added to the total, e.g. handling per sourcing market." },
+      { name: "payment_terms", label: "Payment terms", type: "text", help: "e.g. 100% advance, Net 30." },
+      { name: "incoterm", label: "Incoterm", type: "select", options: ["EXW", "FCA", "FOB", "CPT", "CIP", "DAP", "DDP"], help: "Who pays freight, customs and insurance." },
       owner,
       { name: "bill_to", label: "Bill to", type: "address", full: true },
       { name: "ship_to", label: "Ship to", type: "address", full: true },
-      { name: "terms", label: "Terms & conditions", type: "textarea", full: true },
+      { name: "customer_note", label: "Note to customer", type: "textarea", full: true, default: "Lot numbers and expiry dates are indicative and confirmed at shipment.", help: "Printed under the total, e.g. shelf life or lot notes." },
+      { name: "terms", label: "Disclaimers / terms", type: "textarea", full: true, help: "One per line. Printed on the PDF and listed under the table in the email.",
+        default: "All quotes provided are valid for 15 calendar days.\nPricing is subject to any manufacturer price increase at the time of the actual order.\nPrices, availability and lead times are confirmed only on receipt of the purchase order or payment." },
     ],
   },
   tasks: {
@@ -410,7 +422,10 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
     searchable: ["number", "name", "contact_name", "email", "phone", "city", "country"],
     defaultSort: "name", importable: true,
     bulkFields: ["status", "category"],
-    related: [{ resource: "sourcing", fk: "supplier_id", label: "Sourcing requests" }],
+    related: [
+      { resource: "supplier-prices", fk: "supplier_id", label: "Product prices from this supplier" },
+      { resource: "sourcing", fk: "supplier_id", label: "Sourcing requests" },
+    ],
     fields: [
       { name: "number", label: "Supplier #", type: "text", readOnly: true },
       { name: "name", label: "Supplier name", type: "text", required: true },
@@ -423,6 +438,7 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
       { name: "country", label: "Country", type: "country", list: true },
       { name: "state", label: "State / region", type: "state", countryField: "country" },
       { name: "city", label: "City", type: "text" },
+      { name: "zip", label: "Zip / postal code", type: "text" },
       { name: "payment_terms", label: "Payment terms", type: "text" },
       { name: "lead_time_days", label: "Typical lead time (days)", type: "number" },
       { name: "notes", label: "Notes", type: "textarea", full: true },
@@ -476,6 +492,23 @@ export const RESOURCES: Record<ResourceKey, ResourceDef> = {
       { name: "product_id", label: "Product", type: "ref", ref: "catalogue", required: true, list: true },
       { name: "min_qty", label: "From quantity", type: "number", default: 1, list: true },
       { name: "price", label: "Unit price", type: "money", required: true, list: true },
+    ],
+  },
+  "supplier-prices": {
+    key: "supplier-prices", table: "supplier_prices", label: "Supplier prices", singular: "Supplier price",
+    ownerField: null,
+    titleSql: (a) => `(SELECT p.name FROM products p WHERE p.id = ${a}.product_id) || ' · ' || (SELECT s.name FROM suppliers s WHERE s.id = ${a}.supplier_id)`,
+    searchable: ["notes"],
+    defaultSort: "created_at",
+    fields: [
+      { name: "product_id", label: "Product", type: "ref", ref: "catalogue", required: true, list: true },
+      { name: "supplier_id", label: "Supplier", type: "ref", ref: "suppliers", required: true, list: true },
+      { name: "price", label: "Supplier price (per unit)", type: "money", currencyField: "currency", required: true, list: true },
+      { name: "currency", label: "Currency", type: "currency" },
+      { name: "min_qty", label: "From quantity", type: "number", default: 1, list: true, help: "The price applies from this quantity up (the supplier's MOQ or a volume break)." },
+      { name: "lead_time_days", label: "Lead time (days)", type: "number", list: true },
+      { name: "valid_to", label: "Valid until", type: "date", list: true },
+      { name: "notes", label: "Notes", type: "textarea", full: true, help: "e.g. incoterms, pack, where the price came from." },
     ],
   },
   contracts: {

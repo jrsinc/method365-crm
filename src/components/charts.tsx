@@ -1,8 +1,20 @@
 /**
  * Single-series charts in one hue (--series-1). Each bar has a hover/focus tooltip and every chart
  * ships a table view, so values never depend on colour or hover alone.
+ *
+ * A datum with `href` is clickable (e.g. Analytics opens the records behind that bar).
  */
-type Datum = { label: string; value: number; note?: string };
+import Link from "next/link";
+import type { ReactNode } from "react";
+
+type Datum = { label: string; value: number; note?: string; href?: string };
+
+/** Wraps a bar in a link when it has one; scroll stays where it is, so the details panel opens over the chart. */
+function Hit({ d, className, children, label }: { d: Datum; className: string; children: ReactNode; label: string }) {
+  return d.href
+    ? <Link href={d.href} scroll={false} className={`${className} cursor-pointer`} aria-label={`${label}. Show the records`}>{children}</Link>
+    : <div className={className} tabIndex={0} aria-label={label}>{children}</div>;
+}
 
 function niceMax(v: number) {
   if (v <= 0) return 1;
@@ -19,7 +31,7 @@ function DataTable({ data, valueLabel, format }: { data: Datum[]; valueLabel: st
         <thead><tr className="text-left text-ink-3"><th className="py-1 font-medium">Category</th><th className="py-1 text-right font-medium">{valueLabel}</th></tr></thead>
         <tbody>
           {data.map((d, i) => (
-            <tr key={`${i}-${d.label}`} className="border-t border-line"><td className="py-1">{d.label}</td><td className="py-1 text-right tabular-nums">{format(d.value)}{d.note ? ` · ${d.note}` : ""}</td></tr>
+            <tr key={`${i}-${d.label}`} className="border-t border-line"><td className="py-1">{d.href ? <Link href={d.href} scroll={false} className="text-accent hover:underline">{d.label}</Link> : d.label}</td><td className="py-1 text-right tabular-nums">{format(d.value)}{d.note ? ` · ${d.note}` : ""}</td></tr>
           ))}
         </tbody>
       </table>
@@ -34,9 +46,10 @@ export function BarList({ data, format, valueLabel = "Value" }: { data: Datum[];
     <div>
       <ul className="space-y-2.5">
         {data.map((d, i) => (
-          <li key={`${i}-${d.label}`} className="group relative" tabIndex={0} aria-label={`${d.label}: ${format(d.value)}${d.note ? `, ${d.note}` : ""}`}>
+          <li key={`${i}-${d.label}`}>
+            <Hit d={d} className="group relative block rounded-sm" label={`${d.label}: ${format(d.value)}${d.note ? `, ${d.note}` : ""}`}>
             <div className="mb-1 flex justify-between gap-3 text-xs">
-              <span className="truncate text-ink-2">{d.label}</span>
+              <span className={`truncate ${d.href ? "text-ink group-hover:text-accent group-hover:underline" : "text-ink-2"}`}>{d.label}</span>
               <span className="tabular-nums font-medium">{format(d.value)}</span>
             </div>
             <div className="h-2 w-full rounded-sm bg-grid">
@@ -50,6 +63,7 @@ export function BarList({ data, format, valueLabel = "Value" }: { data: Datum[];
                 {d.note}
               </span>
             )}
+            </Hit>
           </li>
         ))}
       </ul>
@@ -118,7 +132,7 @@ export function ColumnChart({ data, format, valueLabel = "Value", height = 180 }
           </div>
           <div className="relative flex items-end gap-[2px] sm:gap-1" style={{ height }}>
             {data.map((d) => (
-              <div key={d.label + (d.note ?? "")} className="group relative flex h-full flex-1 items-end justify-center" tabIndex={0} aria-label={`${d.label}: ${format(d.value)}`}>
+              <Hit d={d} key={d.label + (d.note ?? "")} className="group relative flex h-full flex-1 items-end justify-center" label={`${d.label}: ${format(d.value)}${d.note ? `, ${d.note}` : ""}`}>
                 <div
                   className="w-full max-w-9 rounded-t-[4px] bg-series-1 transition-opacity group-hover:opacity-80"
                   style={{ height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? 2 : 0 }}
@@ -129,7 +143,7 @@ export function ColumnChart({ data, format, valueLabel = "Value", height = 180 }
                 <span className="pointer-events-none absolute bottom-full z-10 mb-1 hidden whitespace-nowrap rounded bg-ink px-2 py-1 text-xs text-bg shadow group-hover:block group-focus:block">
                   {d.label}: {format(d.value)}{d.note ? ` · ${d.note}` : ""}
                 </span>
-              </div>
+              </Hit>
             ))}
           </div>
           <div className="mt-1 flex gap-[2px] sm:gap-1 text-[11px] text-ink-3">

@@ -113,6 +113,9 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
   const folder = safeFolder(str(sp, "f") || "inbox");
   const filter = str(sp, "filter");
   const q = str(sp, "q");
+  // Search the open folder, or (scope "all") every folder in the mailbox.
+  const scope = str(sp, "in") === "all" ? "all" : "";
+  const searchAll = !!q && scope === "all";
   const selected = str(sp, "m");
   const pageNo = Math.max(0, Number(str(sp, "p")) || 0);
   let list: MailSummary[] = [];
@@ -121,7 +124,7 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
   let folders: FolderNode[] = [];
   const [fr, lr] = await Promise.allSettled([
     listFolders(user.id, !!str(sp, "refresh")),
-    listMessages(user.id, folder, { unread: filter === "unread", flagged: filter === "flagged", search: q || undefined, page: pageNo }),
+    listMessages(user.id, folder, { unread: filter === "unread", flagged: filter === "flagged", search: q || undefined, page: pageNo, allFolders: searchAll }),
   ]);
   if (fr.status === "fulfilled") folders = fr.value;
   if (lr.status === "fulfilled") ({ messages: list, more } = lr.value); else listErr = (lr.reason as Error).message;
@@ -131,7 +134,7 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
 
   const href = (extra: Record<string, string | null>) => {
     const u = new URLSearchParams();
-    const base: Record<string, string> = { f: folder, ...(filter ? { filter } : {}), ...(q ? { q } : {}), ...(selected ? { m: selected } : {}), ...(pageNo ? { p: String(pageNo) } : {}) };
+    const base: Record<string, string> = { f: folder, ...(filter ? { filter } : {}), ...(q ? { q } : {}), ...(q && scope ? { in: scope } : {}), ...(selected ? { m: selected } : {}), ...(pageNo ? { p: String(pageNo) } : {}) };
     for (const [k, v] of Object.entries({ ...base, ...extra })) if (v) u.set(k, v);
     return `/outlook?${u}`;
   };
@@ -190,6 +193,17 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
         <a href="https://outlook.office.com/mail/deeplink/compose" target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-line px-3.5 text-sm font-medium hover:bg-surface-2">Compose in Outlook</a>
         <form action={disconnectOutlook}><Button variant="ghost">Disconnect</Button></form>
       </div>
+      <form action="/outlook" role="search" className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-2">
+        <input type="hidden" name="f" value={folder} />
+        <span className="pl-1 text-ink-3"><Icon name="search" size={16} /></span>
+        <Input name="q" type="search" defaultValue={q} placeholder="Search mail: sender, subject, words in the email…" aria-label="Search mail" className="min-w-[200px] flex-1" />
+        <Select name="in" defaultValue={scope} aria-label="Where to search" className="w-auto">
+          <option value="">In {current?.displayName ?? "this folder"}</option>
+          <option value="all">All mail (every folder)</option>
+        </Select>
+        <Button type="submit" variant="primary">Search</Button>
+        {q && <LinkButton href={`/outlook?f=${encodeURIComponent(folder)}`} variant="ghost">Clear</LinkButton>}
+      </form>
       {msg && <Notice tone={/^(Not sent|Couldn't|Turn on)/.test(msg) ? "red" : "green"}>{msg}</Notice>}
       {err && (
         <Notice tone="amber">
@@ -226,13 +240,10 @@ export default async function Outlook({ searchParams }: { searchParams: Promise<
 
         <Card pad={false} className="min-h-[420px]">
           <div className="flex items-center justify-between border-b border-line px-3 py-2">
-            <p className="truncate font-semibold">{current?.displayName ?? "Inbox"}</p>
-            {current && <span className="shrink-0 text-xs text-ink-3">{current.totalItemCount} items</span>}
+            <p className="truncate font-semibold">{q ? `Results for "${q}"` : (current?.displayName ?? "Inbox")}</p>
+            {q ? <span className="shrink-0 text-xs text-ink-3">{searchAll ? "All mail" : current?.displayName ?? "This folder"} · {list.length}{more ? "+" : ""}</span>
+              : current && <span className="shrink-0 text-xs text-ink-3">{current.totalItemCount} items</span>}
           </div>
-          <form action="/outlook" className="border-b border-line p-2">
-            <input type="hidden" name="f" value={folder} />
-            <Input name="q" type="search" defaultValue={q} placeholder={`Search ${current?.displayName ?? "mail"}…`} aria-label="Search mail" />
-          </form>
           <div className="flex gap-1 border-b border-line px-2 py-1.5 text-xs">
             {[["", "All"], ["unread", "Unread"], ["flagged", "Flagged"], ["linked", "Linked"], ["unmatched", "Unmatched"]].map(([k, l]) => (
               <Link key={k} href={href({ filter: k || null, m: null })} className={cx("rounded-full px-2 py-0.5 font-medium", filter === k ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-surface-2")}>{l}</Link>

@@ -46,6 +46,7 @@ export const MODULES: ModuleDef[] = [
 /** Which module a record type belongs to. */
 const RESOURCE_MODULE: Record<string, string> = {
   "price-books": "pricing", "price-entries": "pricing", contracts: "pricing", "margin-floors": "pricing",
+  "supplier-prices": "suppliers",
 };
 export const moduleOf = (resourceKey: string) => RESOURCE_MODULE[resourceKey] ?? resourceKey;
 

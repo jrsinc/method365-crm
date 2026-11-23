@@ -60,7 +60,7 @@ export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendin
         { href: "/approvals", label: "Approvals", icon: "stamp" },
         { href: "/forecast", label: "Forecast", icon: "trend" },
         { href: "/sourcing", label: "Sourcing", icon: "truck" },
-        { href: "/suppliers", label: "Suppliers", icon: "box" },
+        { href: "/suppliers", label: "Suppliers", icon: "box", match: ["/suppliers", "/supplier-prices"] },
       ],
     },
     {

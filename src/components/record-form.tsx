@@ -249,13 +249,15 @@ function AddableSelect({ common, field, value, options, newValue, newError, canA
 }
 
 export function RecordForm({
-  fields, values, action, options, cancelHref, submitLabel = "Save", hidden = {}, canAssign = true, compact = false, confirmPassword = false, before,
+  fields, values, action, options, cancelHref, submitLabel = "Save", hidden = {}, canAssign = true, compact = false, confirmPassword = false, before, after,
   confirmHint = "Every change is checked against your password and recorded in the audit log.",
 }: {
   confirmPassword?: boolean;
   confirmHint?: string;
   /** Extra controls shown at the top of the form (inside it, so they are submitted). */
   before?: React.ReactNode;
+  /** Extra controls after the fields (inside the form), e.g. a new quote's line items. */
+  after?: React.ReactNode;
   fields: Field[];
   values: Record<string, unknown>;
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
@@ -482,6 +484,7 @@ export function RecordForm({
             : <p className="mt-1 text-xs text-ink-2">{confirmHint}</p>}
         </div>
       )}
+      {after}
       <div className="flex gap-2">
         <Submit>{submitLabel}</Submit>
         {cancelHref && <LinkButton href={cancelHref}>Cancel</LinkButton>}

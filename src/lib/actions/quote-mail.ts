@@ -7,7 +7,9 @@ import { RESOURCES } from "../resources";
 import { getRecord } from "../records";
 import { run } from "../db";
 import { audit } from "../audit";
-import { connection, createDraft, mailActionsEnabled, type FileAttachment } from "../outlook";
+import { connection, createDraft, mailActionsEnabled, textToHtml, type FileAttachment } from "../outlook";
+import { quoteEmailTable, TABLE_MARKER } from "../quote-lines";
+import { getBranding, nameStyle } from "../branding";
 
 const emails = (v: FormDataEntryValue | null) => String(v ?? "").split(/[;,\s]+/).map((x) => x.trim()).filter(Boolean);
 const validEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
@@ -30,6 +32,16 @@ export async function draftQuoteEmail(quoteId: string, fd: FormData) {
   if (bad.length) back(`Not drafted: check these email addresses: ${bad.join(", ")}`);
   const subject = String(fd.get("subject") ?? "").trim().slice(0, 300) || `Quote ${String(q!.number ?? "")}`;
   const text = String(fd.get("body") ?? "").slice(0, 50_000);
+  // The product list with final prices goes where the text says [Product table] (at the end if that line was removed).
+  let html: string | undefined;
+  const parts = text.split(TABLE_MARKER);
+  if (fd.get("table") === "1") {
+    const c = nameStyle(getBranding()).color;
+    const table = quoteEmailTable(q!, { accent: c !== "#18181a" ? c : undefined }).html;
+    const trim = (p: string) => p.replace(/^\s*\n|\n\s*$/g, "");
+    html = parts.length > 1 ? parts.map((p) => textToHtml(trim(p))).join(table) : textToHtml(text) + table;
+  }
+  const plain = parts.join("").replace(/\n{3,}/g, "\n\n");
 
   const files: FileAttachment[] = [];
   const pdf = String(fd.get("pdf") ?? "");
@@ -43,7 +55,7 @@ export async function draftQuoteEmail(quoteId: string, fd: FormData) {
 
   let id: string | null = null;
   try {
-    id = (await createDraft(user.id, { to, cc, bcc, subject, text }, files)).id;
+    id = (await createDraft(user.id, { to, cc, bcc, subject, text: plain, html }, files)).id;
   } catch (e) {
     back(`The draft couldn't be created: ${e instanceof Error ? e.message : "Outlook error"}`);
   }

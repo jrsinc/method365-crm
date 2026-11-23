@@ -87,6 +87,8 @@ export const FORECAST_CATEGORIES = ["Pipeline", "Best Case", "Commit", "Omitted"
 export const INDUSTRIES = ["Pharmaceuticals", "Biotech", "Healthcare", "Medical Devices", "Wholesaler", "Distributor", "Retail", "Manufacturing", "Research", "Technology", "Other"];
 export const ACCOUNT_TYPES = ["Prospect", "Customer", "Partner", "Churned", "Distributor", "Supplier", "Other"];
 export const CONTACT_STATUSES = ["Active", "Archived"];
+/** Contact type; "+ Add new option" in the dropdown adds more. */
+export const CONTACT_TYPES = ["Existing customer", "New lead", "Prospect", "Supplier contact", "Partner"];
 
 export const CASE_TYPES = ["Service Request", "Complaint", "Information Request", "Follow-Up", "Quality Issue", "Technical"];
 export const CASE_PRIORITIES = ["Low", "Medium", "High", "Urgent"];
