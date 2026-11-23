@@ -14,6 +14,7 @@ import { APP_NAME } from "../config";
 import { audit } from "../audit";
 import { confirmEdit } from "../auth/reauth";
 import { managerChain } from "../reviews";
+import { appUrl } from "../notify";
 import { getRoles, invalidateRoles } from "../roles";
 import type { SessionUser } from "../auth/session";
 
@@ -21,6 +22,36 @@ const WRONG = "That password isn't right. Nothing was changed.";
 /** Every admin change needs the admin's own password, like any other edit. */
 const pwOk = (admin: SessionUser, fd: FormData | undefined, entity: string, id: string | null) =>
   confirmEdit(admin, fd?.get("$confirm_password") ?? null, entity, id);
+
+/**
+ * Emails a user their temporary password (new account or admin reset). Returns a short note for the admin.
+ * The password also stays on screen for the admin, in case the email doesn't arrive.
+ */
+async function mailTempPassword(admin: SessionUser, to: { name: string; email: string }, password: string, isNew: boolean) {
+  const first = to.name.trim().split(/\s+/)[0] || "there";
+  const url = appUrl();
+  const text = [
+    `Hi ${first},`,
+    "",
+    isNew
+      ? `${admin.name} has created your ${APP_NAME} account.`
+      : `${admin.name} has reset your ${APP_NAME} password.`,
+    "",
+    `Sign-in email: ${to.email}`,
+    `Temporary password: ${password}`,
+    "",
+    "You'll be asked to choose your own password when you sign in. If you didn't expect this email, tell your administrator.",
+  ].join("\n");
+  try {
+    const r = await sendMailDetailed(to.email, isNew ? `Your ${APP_NAME} account` : `Your ${APP_NAME} password was reset`, text, {
+      heading: isNew ? "Welcome to the CRM" : "Your password was reset",
+      button: { label: "Sign in", href: `${url}/login` },
+    });
+    return r.sent ? ` Emailed to ${to.email}.` : " Email sending isn't set up, so it wasn't emailed; share it yourself.";
+  } catch {
+    return " The email couldn't be sent; share it yourself.";
+  }
+}
 
 /** Reporting line and job details for the organogram. */
 function saveOrg(id: string, fd: FormData) {
@@ -65,9 +96,10 @@ export async function createUser(_: AdminState, fd: FormData): Promise<AdminStat
     id, name, email, await hashPassword(password), role, COLORS[Math.floor(Math.random() * COLORS.length)], fd.get("two_factor") === "1" ? 1 : 0,
   );
   saveOrg(id, fd);
-  await audit(admin, "user.create", "users", id, { email, role });
+  const mailed = fd.get("email_password") === "0" ? "" : await mailTempPassword(admin, { name, email }, password, true);
+  await audit(admin, "user.create", "users", id, { email, role, emailed: !!mailed });
   revalidatePath("/admin/users");
-  return { ok: `Created ${name}.`, tempPassword: generated ? password : undefined };
+  return { ok: `Created ${name}.${mailed}`, tempPassword: generated ? password : undefined };
 }
 
 export async function updateUser(id: string, _: AdminState, fd: FormData): Promise<AdminState> {
@@ -100,13 +132,14 @@ export async function updateUser(id: string, _: AdminState, fd: FormData): Promi
 export async function resetPassword(id: string, fd?: FormData): Promise<AdminState> {
   const admin = await requirePerm("admin");
   if (!(await pwOk(admin, fd, "users", id))) return { error: WRONG };
-  const user = get<{ email: string }>("SELECT email FROM users WHERE id = ?", id);
+  const user = get<{ name: string; email: string }>("SELECT name, email FROM users WHERE id = ?", id);
   if (!user) return { error: "User not found." };
   const pw = `${randomToken().slice(0, 10)}A1a`;
   run("UPDATE users SET password_hash = ?, must_change_password = 1, failed_attempts = 0, locked_until = NULL WHERE id = ?", await hashPassword(pw), id);
   revokeUserSessions(id);
+  const mailed = await mailTempPassword(admin, user, pw, false);
   await audit(admin, "user.reset_password", "users", id);
-  return { ok: "Password reset. Share it securely; they'll be asked to change it.", tempPassword: pw };
+  return { ok: `Password reset; they'll be asked to change it.${mailed}`, tempPassword: pw };
 }
 
 export async function unlockUser(id: string, fd?: FormData) {

@@ -35,6 +35,7 @@ export function ButtonAction({ action, label, confirm }: { action: (fd: FormData
   return (
     <form action={formAction} className="space-y-2" data-confirm-password={`Enter your password to ${label.toLowerCase()}.`}>
       {state.error && <Notice tone="red">{state.error}</Notice>}
+      {state.ok && <Notice tone="green">{state.ok}</Notice>}
       {state.tempPassword && (
         <Notice tone="amber">New temporary password: <code className="select-all font-mono font-semibold">{state.tempPassword}</code></Notice>
       )}

@@ -20,7 +20,8 @@ export const PAGE_SIZE = 25;
 export const seesAll = (user: SessionUser) => user.role === "SUPER_ADMIN" || can(user, "records.read.all");
 
 export function canReadAll(def: ResourceDef, user: SessionUser) {
-  return !def.ownerField || !!def.managePerm || seesAll(user);
+  // Accounts: everyone sees the whole company list; editing is still limited by canEdit (owner, creator, their managers).
+  return !def.ownerField || !!def.managePerm || def.key === "accounts" || seesAll(user);
 }
 
 /** The user's role access to this record type's module (Access roles page). */
