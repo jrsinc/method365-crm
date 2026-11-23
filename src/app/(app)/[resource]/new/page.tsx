@@ -23,6 +23,15 @@ export default async function NewPage({ params, searchParams }: { params: Promis
   const values: Record<string, unknown> = {};
   for (const f of def.fields) if (str(sp, f.name)) values[f.name] = str(sp, f.name);
   if (def.key === "activities" && !values.occurred_at) values.occurred_at = new Date().toISOString().slice(0, 16);
+  // "Copy product": every detail of the original except its NDC / DIN number; it gets its own Material ID.
+  let copiedFrom: string | null = null;
+  if (def.key === "catalogue" && str(sp, "copy")) {
+    const src = getRecord(def, user, str(sp, "copy"));
+    if (src) {
+      copiedFrom = String(src.__title);
+      for (const f of def.fields) if (f.name !== "material_id" && f.name !== "number" && src[f.name] != null && src[f.name] !== "") values[f.name] = src[f.name];
+    }
+  }
   // Show the number this record will get (e.g. Q-2026-00019). It's confirmed when saved.
   if (def.numberEntity && def.numberField) values[def.numberField] = peekNumber(def.numberEntity);
   const hidden: Record<string, string> = {};
@@ -76,8 +85,8 @@ export default async function NewPage({ params, searchParams }: { params: Promis
   return (
     <div className="max-w-5xl">
       <PageHeader
-        title={`New ${def.singular.toLowerCase()}`}
-        subtitle={relatedTitle ? `Linked to ${relatedTitle}` : undefined}
+        title={copiedFrom ? "Copy product" : `New ${def.singular.toLowerCase()}`}
+        subtitle={copiedFrom ? `Copy of ${copiedFrom}. Enter the new NDC / DIN number; the Material ID is given automatically.` : relatedTitle ? `Linked to ${relatedTitle}` : undefined}
         crumbs={[{ href: `/${def.key}`, label: def.label }]}
       />
       <Card>

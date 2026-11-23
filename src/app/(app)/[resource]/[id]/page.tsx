@@ -6,7 +6,7 @@ import { getResource, RESOURCES, type ResourceDef } from "@/lib/resources";
 import { canCreate, canEdit, getRecord, listRecords, refOptions, scopeSql } from "@/lib/records";
 import { date, money, money2 } from "@/lib/format";
 import { linkExistingQuote } from "@/lib/actions/deal-lines";
-import { quickUpdateForm, saveRecord } from "@/lib/actions/records";
+import { copyProduct, quickUpdateForm, saveRecord } from "@/lib/actions/records";
 import { PasswordForm } from "@/components/password-prompt";
 import { convertLead, createSalesOrder, decideDiscount } from "@/lib/actions/sales";
 import { discountDeciders, discountLimit } from "@/lib/discounts";
@@ -71,6 +71,11 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
           <>
             {def.key === "quotes" && <LinkButton href="#email">Email to customer</LinkButton>}
             {def.key === "quotes" && <LinkButton href={`/print/quotes/${id}`} target="_blank">PDF</LinkButton>}
+            {def.key === "catalogue" && canCreate(def, user) && (
+              <form action={copyProduct.bind(null, id)} data-confirm-password={`Enter your password to copy "${String(row.__title)}" into a new product.`}>
+                <button type="submit" className="inline-flex h-9 items-center rounded-md border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2" title="New product with the same details, except the NDC / DIN number">Copy product</button>
+              </form>
+            )}
             {editable && <LinkButton href={`${self}/edit`} variant="primary">Edit</LinkButton>}
           </>
         }

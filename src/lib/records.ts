@@ -433,8 +433,12 @@ function checkMaterialId(def: ResourceDef, data: Record<string, unknown>, selfId
   const mid = String(data.material_id).trim();
   data.material_id = mid || null;
   if (!mid) return;
-  const other = get<{ name: string }>("SELECT name FROM products WHERE material_id = ? COLLATE NOCASE AND id <> ?", mid, selfId ?? "");
-  if (other) errors.material_id = `Material ID ${mid} is already used by "${other.name}".`;
+  const bare = mid.toLowerCase().replace(/[\s\-./]/g, "");
+  const other = get<{ name: string; number: string | null; material_id: string }>(
+    `SELECT name, number, material_id FROM products
+      WHERE id <> ? AND lower(replace(replace(replace(replace(replace(material_id, '-', ''), ' ', ''), '.', ''), '/', ''), char(9), '')) = ?`,
+    selfId ?? "", bare);
+  if (other) errors.material_id = `${mid} is already used by "${other.name}"${other.number ? ` (${other.number})` : ""}${other.material_id !== mid ? `, written as ${other.material_id}` : ""}. Each product needs its own number.`;
 }
 
 /** Opportunities above the configured threshold need a sales manager's sign-off. */

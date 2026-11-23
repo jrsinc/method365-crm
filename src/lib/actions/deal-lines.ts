@@ -11,6 +11,7 @@ import { audit } from "../audit";
 import { confirmEdit } from "../auth/reauth";
 import { PRODUCT_TYPES } from "../config";
 import { notify } from "../notify";
+import { nextNumber } from "../settings";
 
 export type LineState = { error?: string; ok?: string };
 
@@ -109,10 +110,10 @@ export async function addNewProductLine(dealId: string, _prev: LineState, fd: Fo
   const productId = newId();
   tx(() => {
     run(
-      `INSERT INTO products (id, sku, name, category, type, family, manufacturer, status, unit_price, currency, active, description,
+      `INSERT INTO products (id, number, sku, name, category, type, family, manufacturer, status, unit_price, currency, active, description,
          dosage_form, pack_size, uom, lot_number, expiry)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      productId, sku, name, null, type, null, manufacturer, status, price ?? 0, "USD", manager ? 1 : 0,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      productId, nextNumber("products"), sku, name, null, type, null, manufacturer, status, price ?? 0, "USD", manager ? 1 : 0,
       `Added from opportunity ${String(ctx.deal.__title)}`,
       dosage, pack, uom, lot, exp,
     );

@@ -436,6 +436,21 @@ function migrate(db: DatabaseSync) {
   if (!cols("suppliers").includes("zip")) db.exec("ALTER TABLE suppliers ADD COLUMN zip TEXT");
   const pc2 = cols("products");
   for (const c of ["weight_g", "length_in", "width_in", "height_in"]) if (!pc2.includes(c)) db.exec(`ALTER TABLE products ADD COLUMN ${c} REAL`);
+  // Material ID: given automatically (MAT-00001…) and never repeated. Existing products get one in creation order.
+  if (!pc2.includes("number")) db.exec("ALTER TABLE products ADD COLUMN number TEXT");
+  if (!db.prepare("SELECT 1 FROM numbering WHERE entity = 'products'").get()) {
+    db.prepare("INSERT INTO numbering (entity, prefix, next_number, padding) VALUES ('products', 'MAT-', 1, 5)").run();
+  }
+  const unnumbered = db.prepare("SELECT id FROM products WHERE number IS NULL OR number = '' ORDER BY created_at, rowid").all() as { id: string }[];
+  if (unnumbered.length) {
+    const nextMat = db.prepare("UPDATE numbering SET next_number = next_number + 1 WHERE entity = 'products' RETURNING prefix, next_number - 1 AS num, padding");
+    const setMat = db.prepare("UPDATE products SET number = ? WHERE id = ?");
+    for (const p of unnumbered) {
+      const nb = nextMat.get() as { prefix: string; num: number; padding: number };
+      setMat.run(`${nb.prefix}${String(nb.num).padStart(nb.padding, "0")}`, p.id);
+    }
+  }
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_products_number ON products(number) WHERE number IS NOT NULL");
   if (!cols("leads").includes("website")) db.exec("ALTER TABLE leads ADD COLUMN website TEXT");
   if (!cols("suppliers").includes("state")) db.exec("ALTER TABLE suppliers ADD COLUMN state TEXT");
 

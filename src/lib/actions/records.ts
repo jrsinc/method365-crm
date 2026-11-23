@@ -20,6 +20,19 @@ import { recalcQuote } from "../records";
 import { notify } from "../notify";
 
 /** Lets the password dialog tell the user straight away if they mistyped. The edit itself re-checks. */
+/** Product Master "Copy product": checks the password, then opens a new product filled from this one (without its NDC / DIN number). */
+export async function copyProduct(id: string, fd: FormData) {
+  const user = await requireUser();
+  const def = RESOURCES.catalogue;
+  if (!canCreate(def, user)) redirect("/forbidden");
+  if (!get("SELECT 1 FROM products WHERE id = ?", id)) redirect("/catalogue");
+  if (!(await confirmEdit(user, fd.get("$confirm_password"), "catalogue", id))) {
+    redirect(`/catalogue/${id}?msg=${encodeURIComponent("That password isn't right. Nothing was copied.")}`);
+  }
+  await audit(user, "copy.start", "catalogue", id);
+  redirect(`/catalogue/new?copy=${encodeURIComponent(id)}`);
+}
+
 export async function verifyMyPassword(pw: string): Promise<boolean> {
   const user = await requireUser();
   return passwordMatches(user, pw);
