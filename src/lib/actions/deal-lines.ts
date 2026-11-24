@@ -12,6 +12,8 @@ import { confirmEdit } from "../auth/reauth";
 import { PRODUCT_TYPES } from "../config";
 import { notify } from "../notify";
 import { nextNumber } from "../settings";
+import { recalcQuote } from "../records";
+import type { SessionUser } from "../auth/session";
 
 export type LineState = { error?: string; ok?: string };
 
@@ -54,6 +56,35 @@ function addLine(dealId: string, productId: string, description: string, qty: nu
   run("INSERT INTO deal_lines (id, deal_id, product_id, description, quantity, target_price, position, lot_number, expiry) VALUES (?,?,?,?,?,?,?,?,?)",
     newId(), dealId, productId, description, qty, price, pos, lot, expiry);
 }
+/**
+ * The product just added to the opportunity also goes onto the opportunity's Draft quotes the user can edit,
+ * with the same quantity, price, lot and expiry. Quotes already sent (any status after Draft) aren't changed.
+ * Products still Pending Approval aren't quoted. Returns the quote numbers that got the line.
+ */
+function addToDraftQuotes(user: SessionUser, dealId: string, productId: string, qty: number, price: number | null, lot: string | null, exp: string | null): string[] {
+  const p = get<{ name: string; status: string; unit_price: number; material_id_type: string | null; material_id: string | null; manufacturer: string | null;
+    lot_number: string | null; expiry: string | null; hts_code: string | null; uom: string | null; pack_size: string | null }>(
+    "SELECT name, status, unit_price, material_id_type, material_id, manufacturer, lot_number, expiry, hts_code, uom, pack_size FROM products WHERE id = ?", productId);
+  if (!p || p.status !== "Active") return [];
+  const done: string[] = [];
+  for (const q of all<{ id: string }>("SELECT id FROM quotes WHERE deal_id = ? AND status = 'Draft'", dealId)) {
+    const quote = getRecord(RESOURCES.quotes, user, q.id);
+    if (!quote || !canEdit(RESOURCES.quotes, user, quote)) continue;
+    tx(() => {
+      const pos = get<{ p: number }>("SELECT COALESCE(MAX(position), -1) + 1 p FROM quote_items WHERE quote_id = ?", q.id)!.p;
+      run(`INSERT INTO quote_items(id, quote_id, product_id, description, quantity, unit_price, position,
+             material_id_type, material_id, manufacturer, lot_number, expiry, hts_code, uom, pack_size)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        newId(), q.id, productId, p.name, qty, price ?? p.unit_price ?? 0, pos,
+        p.material_id_type, p.material_id, p.manufacturer, lot ?? p.lot_number, exp ?? p.expiry, p.hts_code, p.uom, p.pack_size);
+      recalcQuote(q.id);
+    });
+    done.push(String(quote.__title));
+  }
+  return done;
+}
+const alsoOn = (quotes: string[]) => (quotes.length ? ` Also added to draft quote${quotes.length === 1 ? "" : "s"} ${quotes.join(", ")}.` : "");
+
 const text = (v: FormDataEntryValue | null, max = 100) => String(v ?? "").trim().slice(0, max) || null;
 
 const num = (v: FormDataEntryValue | null) => {
@@ -77,11 +108,13 @@ export async function addDealLine(dealId: string, _prev: LineState, fd: FormData
   if (Number.isNaN(price)) return { error: "Unit price must be a number." };
   // Lot and expiry are kept on the line only when they differ from the product's.
   const lot = text(fd.get("lot_number")), exp = text(fd.get("expiry"), 50);
-  addLine(dealId, product.id, product.name, qty, price ?? product.unit_price,
-    lot && lot !== product.lot_number ? lot : null, exp && exp !== product.expiry ? exp : null);
-  await audit(ctx.user, "update", "opportunities", dealId, { line_added: product.name });
+  const lineLot = lot && lot !== product.lot_number ? lot : null, lineExp = exp && exp !== product.expiry ? exp : null;
+  addLine(dealId, product.id, product.name, qty, price ?? product.unit_price, lineLot, lineExp);
+  const quotes = addToDraftQuotes(ctx.user, dealId, product.id, qty, price ?? product.unit_price, lineLot, lineExp);
+  await audit(ctx.user, "update", "opportunities", dealId, { line_added: product.name, quotes });
   revalidatePath(`/opportunities/${dealId}`);
-  return { ok: `${product.name} added.` };
+  if (quotes.length) revalidatePath("/quotes", "layout");
+  return { ok: `${product.name} added.${alsoOn(quotes)}` };
 }
 
 /**
@@ -123,10 +156,12 @@ export async function addNewProductLine(dealId: string, _prev: LineState, fd: Fo
         notify(u.id, `New product awaiting approval: ${name}`, `/catalogue/${productId}`, { heading: "A new product needs approval" });
     }
   });
-  await audit(ctx.user, "create", "catalogue", productId, { from_opportunity: dealId, status });
+  const quotes = manager ? addToDraftQuotes(ctx.user, dealId, productId, qty, price, null, null) : [];
+  await audit(ctx.user, "create", "catalogue", productId, { from_opportunity: dealId, status, quotes });
   revalidatePath(`/opportunities/${dealId}`);
   revalidatePath("/catalogue");
-  return { ok: manager ? `${name} added to the Product Master and this opportunity.` : `${name} added. It's pending approval in the Product Master.` };
+  if (quotes.length) revalidatePath("/quotes", "layout");
+  return { ok: manager ? `${name} added to the Product Master and this opportunity.${alsoOn(quotes)}` : `${name} added. It's pending approval in the Product Master, so it goes on quotes once approved.` };
 }
 
 export async function removeDealLine(dealId: string, lineId: string, fd?: FormData) {

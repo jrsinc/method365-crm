@@ -6,8 +6,17 @@ import { Button, Input, Notice, Select } from "./ui";
 import { money2 } from "@/lib/format";
 import { marketOf, materialLabel, unitOf, type GoodsInfo } from "@/lib/goods";
 import { GoodsDescription } from "./goods-table";
+import { ProductSearch } from "./product-search";
 
-type Product = { id: string; name: string; unit_price: number; active: number } & GoodsInfo;
+type Product = { id: string; name: string; unit_price: number; active: number; number?: string | null; sku?: string | null } & GoodsInfo;
+
+/** A product's details copied onto a quote line; they can then be changed for this quote. */
+const fromProduct = (p: Product): Partial<QuoteItemInput> => ({
+  product_id: p.id, description: p.name, unit_price: p.unit_price,
+  material_id_type: p.material_id_type, material_id: p.material_id,
+  manufacturer: p.manufacturer ?? "", lot_number: p.lot_number ?? "", expiry: p.expiry ?? "",
+  hts_code: p.hts_code ?? "", uom: p.uom ?? "", pack_size: p.pack_size ?? "",
+});
 
 /**
  * A quote's line items. On a saved quote they're saved with "Save line items"; with `formMode` (the New quote form)
@@ -60,12 +69,7 @@ export function QuoteItems({
                         onChange={(e) => {
                           const p = products.find((x) => x.id === e.target.value);
                           // Picking a product copies its details onto the line; they can then be changed for this quote.
-                          update(i, p ? {
-                            product_id: p.id, description: p.name, unit_price: p.unit_price,
-                            material_id_type: p.material_id_type, material_id: p.material_id,
-                            manufacturer: p.manufacturer ?? "", lot_number: p.lot_number ?? "", expiry: p.expiry ?? "",
-                            hts_code: p.hts_code ?? "", uom: p.uom ?? "", pack_size: p.pack_size ?? "",
-                          } : { product_id: null, material_id_type: null, material_id: null });
+                          update(i, p ? fromProduct(p) : { product_id: null, material_id_type: null, material_id: null });
                         }}
                       >
                         <option value="">Custom item</option>
@@ -121,10 +125,18 @@ export function QuoteItems({
         </table>
       </div>
       <div className="flex flex-wrap items-start justify-between gap-4 p-4">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           {editable && (
             <>
-              <Button type="button" onClick={() => { setItems((xs) => [...xs, { product_id: null, description: "", quantity: 1, unit_price: 0 }]); setDirty(true); }}>Add line</Button>
+              <div className="w-full sm:w-96">
+                <ProductSearch
+                  products={products}
+                  placeholder="Add a product: type its name, NDC or Material ID…"
+                  isPickable={(p) => !!p.active}
+                  onPick={(p) => { setItems((xs) => [...xs, { quantity: 1, ...fromProduct(p) } as QuoteItemInput]); setDirty(true); }}
+                />
+              </div>
+              <Button type="button" onClick={() => { setItems((xs) => [...xs, { product_id: null, description: "", quantity: 1, unit_price: 0 }]); setDirty(true); }}>Add custom line</Button>
               {!formMode && quoteId && <Button
                 type="button" variant="primary" disabled={!dirty || pending}
                 onClick={async () => {

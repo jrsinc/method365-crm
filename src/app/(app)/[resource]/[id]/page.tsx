@@ -542,8 +542,8 @@ function OpportunityLines({ row, editable, user }: { row: Row; editable: boolean
     `SELECT l.id, l.product_id, l.description, l.quantity, l.target_price, p.status, p.sku, p.dosage_form, p.pack_size, p.material_id_type, p.material_id, p.manufacturer, p.hts_code, p.uom, p.remark,
             COALESCE(l.lot_number, p.lot_number) AS lot_number, COALESCE(l.expiry, p.expiry) AS expiry
        FROM deal_lines l LEFT JOIN products p ON p.id = l.product_id WHERE l.deal_id = ? ORDER BY l.position`, id);
-  const products = all<{ id: string; name: string; sku: string | null; status: string; unit_price: number; lot_number: string | null; expiry: string | null; material_id: string | null }>(
-    "SELECT id, name, sku, status, unit_price, lot_number, expiry, material_id FROM products ORDER BY name");
+  const products = all<{ id: string; name: string; sku: string | null; status: string; unit_price: number; lot_number: string | null; expiry: string | null; material_id: string | null; number: string | null }>(
+    "SELECT id, name, sku, status, unit_price, lot_number, expiry, material_id, number FROM products ORDER BY name");
   return (
     <Card title={`What the customer asked for (${lines.length})`} pad={false}>
       <DealLines
@@ -604,8 +604,8 @@ function QuoteSection({ row, editable }: { row: Row; editable: boolean }) {
        FROM quote_items i LEFT JOIN products p ON p.id = i.product_id WHERE i.quote_id = ? ORDER BY i.position`, row.id as string,
   );
   // Every product (inactive ones only for lines that already use them) with its goods details.
-  const products = all<{ id: string; name: string; unit_price: number; active: number } & GoodsInfo>(
-    `SELECT p.id, p.name, p.unit_price, p.active, ${GOODS_SQL} FROM products p ORDER BY p.name`);
+  const products = all<{ id: string; name: string; unit_price: number; active: number; number: string | null; sku: string | null } & GoodsInfo>(
+    `SELECT p.id, p.name, p.unit_price, p.active, p.number, p.sku, ${GOODS_SQL} FROM products p ORDER BY p.name`);
   return (
     <Card title="Line items" pad={false}>
       <QuoteItems

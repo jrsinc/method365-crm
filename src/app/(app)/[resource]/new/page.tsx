@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { requireUser, can } from "@/lib/auth/dal";
-import { getResource, RELATABLE, type ResourceKey } from "@/lib/resources";
+import { getResource, RELATABLE, RESOURCES, type ResourceKey } from "@/lib/resources";
+import type { QuoteItemInput } from "@/lib/quote-lines";
 import { canCreate, getRecord, refOptions } from "@/lib/records";
 import { saveRecord } from "@/lib/actions/records";
 import { formOptions, str, type SP } from "@/lib/page-helpers";
@@ -63,15 +64,32 @@ export default async function NewPage({ params, searchParams }: { params: Promis
       <p className="mt-1 text-xs text-ink-3">{def.key === "tasks" ? "Leave it as None for a general or internal task (e.g. prepare a report). Linked tasks also show on that record's timeline." : "It then shows on that record's timeline."}</p>
     </div>
   ) : null;
+  // New quote from an opportunity: start with the products the customer asked for.
+  let dealItems: QuoteItemInput[] = [];
+  let dealCurrency: string | null = null;
+  if (def.key === "quotes" && str(sp, "deal_id")) {
+    const deal = getRecord(RESOURCES.opportunities, user, str(sp, "deal_id"));
+    if (deal) {
+      dealCurrency = (deal.currency as string) || null;
+      dealItems = all<QuoteItemInput>(
+        `SELECT l.product_id, l.description, l.quantity, COALESCE(l.target_price, p.unit_price, 0) AS unit_price,
+                p.material_id_type, p.material_id, p.manufacturer, p.hts_code, p.uom, p.pack_size,
+                COALESCE(l.lot_number, p.lot_number) AS lot_number, COALESCE(l.expiry, p.expiry) AS expiry
+           FROM deal_lines l LEFT JOIN products p ON p.id = l.product_id
+          WHERE l.deal_id = ? AND (p.id IS NULL OR p.status = 'Active') ORDER BY l.position`, String(deal.id))
+        .map((i) => ({ ...i, quantity: Number(i.quantity) || 0, unit_price: Number(i.unit_price) || 0 }));
+      if (dealCurrency && !values.currency) values.currency = dealCurrency;
+    }
+  }
   // New quote: add the line items on the same form; they're saved with the quote.
   const quoteLines = def.key === "quotes" ? (
     <div className="rounded-lg border border-line">
-      <p className="border-b border-line px-4 py-2.5 font-semibold">Line items</p>
+      <p className="border-b border-line px-4 py-2.5 font-semibold">Line items{dealItems.length ? <span className="ml-2 text-xs font-normal text-ink-3">Filled in from the opportunity&apos;s products. Change or add more below.</span> : null}</p>
       <QuoteItems
-        initial={[]}
-        products={all<{ id: string; name: string; unit_price: number; active: number } & GoodsInfo>(
-          `SELECT p.id, p.name, p.unit_price, p.active, ${GOODS_SQL} FROM products p WHERE p.active = 1 ORDER BY p.name`)}
-        currency={baseCurrency().code}
+        initial={dealItems}
+        products={all<{ id: string; name: string; unit_price: number; active: number; number: string | null; sku: string | null } & GoodsInfo>(
+          `SELECT p.id, p.name, p.unit_price, p.active, p.number, p.sku, ${GOODS_SQL} FROM products p WHERE p.active = 1 ORDER BY p.name`)}
+        currency={dealCurrency || baseCurrency().code}
         discountPct={0}
         taxPct={0}
         editable

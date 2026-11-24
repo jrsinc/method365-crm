@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useRef, useState } from "react";
+import { ProductSearch } from "./product-search";
 import type { LineState } from "@/lib/actions/deal-lines";
 import { Badge, Input, Label, Notice, Select, Button } from "./ui";
 import { Submit } from "./submit";
@@ -11,7 +12,7 @@ type Line = {
   id: string; product_id: string | null; description: string; quantity: number; target_price: number | null; status: string | null; sku: string | null;
   dosage_form?: string | null; pack_size?: string | null; sourcing_href: string;
 } & GoodsInfo;
-type Product = { id: string; name: string; sku: string | null; status: string; unit_price: number; lot_number: string | null; expiry: string | null; material_id: string | null };
+type Product = { id: string; name: string; sku: string | null; status: string; unit_price: number; lot_number: string | null; expiry: string | null; material_id: string | null; number?: string | null };
 
 export function DealLines({
   lines, products, editable, productTypes, dosageForms, canManageProducts, addAction, addNewAction, removeAction, currency,
@@ -31,13 +32,9 @@ export function DealLines({
   const [newState, addNew] = useActionState(addNewAction, {});
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"pick" | "new">("pick");
-  // The chosen product's lot and expiry are filled in, and can be changed for this opportunity.
-  const [picked, setPicked] = useState({ id: "", lot: "", exp: "" });
+  const pickForm = useRef<HTMLFormElement>(null);
+  const pickedId = useRef<HTMLInputElement>(null);
   const fmt = (n: number | null) => (n == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(n));
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? products.filter((p) => p.name.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q) || (p.material_id ?? "").toLowerCase().includes(q)) : products;
-  }, [products, query]);
   const total = lines.reduce((s, l) => s + (l.target_price ?? 0) * l.quantity, 0);
 
   return (
@@ -92,29 +89,24 @@ export function DealLines({
           </div>
 
           {mode === "pick" ? (
-            <form action={add} data-confirm-password="Enter your password to add this product line." className="grid gap-3 sm:grid-cols-3 lg:grid-cols-[1fr_90px_120px_110px_110px_auto] sm:items-end">
-              {addState.error && <div className="sm:col-span-3 lg:col-span-6"><Notice tone="red">{addState.error}</Notice></div>}
-              {addState.ok && <div className="sm:col-span-3 lg:col-span-6"><Notice tone="green">{addState.ok}</Notice></div>}
-              <div className="sm:col-span-3 lg:col-span-1">
+            <form ref={pickForm} action={add} data-confirm-password="Enter your password to add this product line." className="grid gap-3 sm:grid-cols-4 lg:grid-cols-[1fr_90px_120px_110px_110px] sm:items-end">
+              {addState.error && <div className="sm:col-span-4 lg:col-span-5"><Notice tone="red">{addState.error}</Notice></div>}
+              {addState.ok && <div className="sm:col-span-4 lg:col-span-5"><Notice tone="green">{addState.ok}</Notice></div>}
+              <input ref={pickedId} type="hidden" name="product_id" />
+              <div className="sm:col-span-4 lg:col-span-1">
                 <Label htmlFor="dl_search">Product</Label>
-                <Input id="dl_search" type="search" placeholder="Search by name or code…" value={query} onChange={(e) => setQuery(e.target.value)} className="mb-1.5" />
-                <Select name="product_id" aria-label="Choose product" required value={picked.id}
-                  onChange={(e) => { const p = products.find((x) => x.id === e.target.value); setPicked({ id: e.target.value, lot: p?.lot_number ?? "", exp: p?.expiry ?? "" }); }}>
-                  <option value="" disabled>{matches.length ? `${matches.length} match${matches.length === 1 ? "" : "es"} — choose one` : "No match"}</option>
-                  {matches.map((p) => <option key={p.id} value={p.id} disabled={p.status !== "Active"}>{p.sku ? `${p.sku} · ` : ""}{p.name}{p.status !== "Active" ? ` (${p.status})` : ""}</option>)}
-                </Select>
-                {query.trim() && matches.length === 0 && (
-                  <p className="mt-1 text-xs text-ink-2">
-                    Not in the Product Master.{" "}
-                    <button type="button" className="font-medium text-accent hover:underline" onClick={() => setMode("new")}>Add “{query.trim()}” as a new product</button>
-                  </p>
-                )}
+                <ProductSearch
+                  id="dl_search"
+                  products={products}
+                  onPick={(p) => { if (pickedId.current) pickedId.current.value = p.id; pickForm.current?.requestSubmit(); }}
+                  onNoMatch={(q) => { setQuery(q); setMode("new"); }}
+                />
               </div>
               <div><Label htmlFor="dl_qty">Quantity</Label><Input id="dl_qty" name="quantity" type="number" min={0} step="any" defaultValue={1} /></div>
               <div><Label htmlFor="dl_price">Unit price</Label><Input id="dl_price" name="target_price" type="number" min={0} step="0.01" placeholder="List price" /></div>
-              <div><Label htmlFor="dl_lot">LOT</Label><Input id="dl_lot" name="lot_number" placeholder="TBD" value={picked.lot} onChange={(e) => setPicked({ ...picked, lot: e.target.value })} /></div>
-              <div><Label htmlFor="dl_exp">EXP</Label><Input id="dl_exp" name="expiry" placeholder="TBD" value={picked.exp} onChange={(e) => setPicked({ ...picked, exp: e.target.value })} /></div>
-              <Submit>Add line</Submit>
+              <div><Label htmlFor="dl_lot">LOT</Label><Input id="dl_lot" name="lot_number" placeholder="Product's" /></div>
+              <div><Label htmlFor="dl_exp">EXP</Label><Input id="dl_exp" name="expiry" placeholder="Product's" /></div>
+              <p className="text-xs text-ink-3 sm:col-span-4 lg:col-span-5">Type the product&apos;s name, NDC or Material ID and pick it: it&apos;s added straight away (set the quantity and price first if they differ). It also goes onto this opportunity&apos;s Draft quotes.</p>
             </form>
           ) : (
             <form action={addNew} data-confirm-password="Enter your password to add this product." className="grid gap-3 sm:grid-cols-3">
