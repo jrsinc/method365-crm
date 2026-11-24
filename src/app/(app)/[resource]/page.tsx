@@ -102,6 +102,7 @@ export default async function ListPage({ params, searchParams }: { params: Promi
         <h1 className="sr-only">{def.label}</h1>
         {def.key === "opportunities" && <LinkButton href="/pipeline">Board view</LinkButton>}
         {def.key === "activities" && <LinkButton href="/calendar">Calendar view</LinkButton>}
+        {def.key === "catalogue" && <LinkButton href="/pricing/products">Sales &amp; supplier prices</LinkButton>}
         {copy && copy.rows.length > 0 && <CopyTableButton headers={copy.headers} rows={copy.rows} />}
         {writable && <LinkButton href={`${base}/new`} variant="primary"><Icon name="plus" size={15} />{meta?.addLabel ?? `Add ${def.singular}`}</LinkButton>}
       </div>

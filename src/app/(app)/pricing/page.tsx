@@ -41,7 +41,10 @@ export default async function Pricing({ searchParams }: { searchParams: Promise<
           <h1 className="text-xl font-semibold tracking-tight">Pricing</h1>
           <p className="text-ink-2">What customers pay, and the lowest margin a quote may carry.</p>
         </div>
-        {manage && <LinkButton href="/price-books/new" variant="primary">New price book</LinkButton>}
+        <div className="flex flex-wrap gap-2">
+          <LinkButton href="/pricing/products">Sales &amp; supplier prices</LinkButton>
+          {manage && <LinkButton href="/price-books/new" variant="primary">New price book</LinkButton>}
+        </div>
       </div>
 
       <Card>

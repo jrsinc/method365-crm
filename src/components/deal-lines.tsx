@@ -103,7 +103,7 @@ export function DealLines({
                 />
               </div>
               <div><Label htmlFor="dl_qty">Quantity</Label><Input id="dl_qty" name="quantity" type="number" min={0} step="any" defaultValue={1} /></div>
-              <div><Label htmlFor="dl_price">Unit price</Label><Input id="dl_price" name="target_price" type="number" min={0} step="0.01" placeholder="List price" /></div>
+              <div><Label htmlFor="dl_price">Unit price</Label><Input id="dl_price" name="target_price" type="number" min={0} step="0.01" placeholder="Sales price" /></div>
               <div><Label htmlFor="dl_lot">LOT</Label><Input id="dl_lot" name="lot_number" placeholder="Product's" /></div>
               <div><Label htmlFor="dl_exp">EXP</Label><Input id="dl_exp" name="expiry" placeholder="Product's" /></div>
               <p className="text-xs text-ink-3 sm:col-span-4 lg:col-span-5">Type the product&apos;s name, NDC or Material ID and pick it: it&apos;s added straight away (set the quantity and price first if they differ). It also goes onto this opportunity&apos;s Draft quotes.</p>
