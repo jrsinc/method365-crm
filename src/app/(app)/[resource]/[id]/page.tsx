@@ -7,6 +7,7 @@ import { canCreate, canEdit, getRecord, listRecords, refOptions, scopeSql } from
 import { date, money, money2 } from "@/lib/format";
 import { linkExistingQuote } from "@/lib/actions/deal-lines";
 import { copyProduct, quickUpdateForm, saveRecord } from "@/lib/actions/records";
+import { RecordLayout } from "@/components/record-layout";
 import { PasswordForm } from "@/components/password-prompt";
 import { convertLead, createSalesOrder, decideDiscount } from "@/lib/actions/sales";
 import { discountDeciders, discountLimit } from "@/lib/discounts";
@@ -82,8 +83,9 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
       />
 
       {msg && <div className="mb-4"><Notice tone={/needs your manager|waiting for manager/i.test(msg) ? "amber" : /n't|not |can't|different|already/i.test(msg) ? "red" : "green"}>{msg}</Notice></div>}
-      <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
-        <div className="min-w-0 space-y-5">
+      <RecordLayout
+        counts={def.timeline ? { tasks: openTaskCount(def, id, user) } : undefined}
+        main={<>
           {def.key === "opportunities" && editable && <StageBar row={row} />}
           {def.key === "quotes" && editable && <StageBar row={row} resource="quotes" field="status" options={QUOTE_STATUSES} noun="quote" />}
           {def.key === "quotes" && <DiscountPanel row={row} user={user} />}
@@ -127,9 +129,8 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
 
           {def.related?.map((rel) => <RelatedTable key={rel.resource + rel.fk} parent={def} parentId={id} rel={rel} user={user} />)}
           <AuditTrail entity={def.key} id={id} />
-        </div>
-
-        <aside className="space-y-5">
+        </>}
+        side={<>
           {def.key === "leads" && <ConvertPanel row={row} editable={editable} user={user} />}
           {def.timeline && <TaskPanel def={def} id={id} user={user} />}
           {def.timeline && <Timeline def={def} id={id} user={user} self={self} />}
@@ -139,10 +140,15 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
               <div className="flex justify-between gap-3"><dt>Last updated</dt><dd className="text-right">{dateTime(row.updated_at)}</dd></div>
             </dl>
           </Card>
-        </aside>
-      </div>
+        </>}
+      />
     </div>
   );
+}
+
+function openTaskCount(def: ResourceDef, id: string, user: SessionUser) {
+  const tasks = listRecords(RESOURCES.tasks, user, { where: { col: "related", value: `${def.key}:${id}` }, sort: "due_date", dir: "asc", pageSize: 20 });
+  return tasks.rows.filter((t) => t.status !== "Done" && t.status !== "Cancelled").length;
 }
 
 /** Discount above the limit: who it's waiting on, and Approve / Reject for the owner's manager. */
