@@ -7,6 +7,7 @@ import { saveRecord } from "@/lib/actions/records";
 import { formOptions, str, type SP } from "@/lib/page-helpers";
 import { RecordForm } from "@/components/record-form";
 import { peekNumber } from "@/lib/settings";
+import { readEmailLink } from "@/lib/email-links";
 import { Card, Label, PageHeader, Select } from "@/components/ui";
 import { QuoteItems } from "@/components/quote-items";
 import { all } from "@/lib/db";
@@ -99,12 +100,22 @@ export default async function NewPage({ params, searchParams }: { params: Promis
   ) : null;
   const back = str(sp, "returnTo");
   if (back.startsWith("/") && !back.startsWith("//")) hidden.returnTo = back;
+  // Draft started from an email in Outlook: it's only created when saved; Cancel goes back to the email.
+  const emailLink = str(sp, "email") ? readEmailLink(user.id, str(sp, "email")) : null;
+  let cancelHref = hidden.returnTo ?? `/${def.key}`;
+  if (emailLink) {
+    hidden.$email_link = str(sp, "email");
+    const gid = emailLink.kind === "graph" ? String((emailLink.payload as { id?: string }).id ?? "") : "";
+    if (gid) cancelHref = `/outlook?m=${encodeURIComponent(gid)}`;
+  }
 
   return (
     <div className="max-w-5xl">
       <PageHeader
         title={copiedFrom ? "Copy product" : `New ${def.singular.toLowerCase()}`}
-        subtitle={copiedFrom ? `Copy of ${copiedFrom}. Enter the new NDC / DIN number; the Material ID is given automatically.` : relatedTitle ? `Linked to ${relatedTitle}` : undefined}
+        subtitle={copiedFrom ? `Copy of ${copiedFrom}. Enter the new NDC / DIN number; the Material ID is given automatically.`
+          : emailLink ? `Draft from an email. Nothing is saved until you press Create ${def.singular.toLowerCase()}; the email then goes on its timeline. Cancel and nothing is created.`
+          : relatedTitle ? `Linked to ${relatedTitle}` : undefined}
         crumbs={[{ href: `/${def.key}`, label: def.label }]}
       />
       <Card>
@@ -114,7 +125,7 @@ export default async function NewPage({ params, searchParams }: { params: Promis
           hidden={hidden}
           action={saveRecord.bind(null, def.key, null)}
           options={formOptions(def, user)}
-          cancelHref={hidden.returnTo ?? `/${def.key}`}
+          cancelHref={cancelHref}
           submitLabel={`Create ${def.singular.toLowerCase()}`}
           canAssign={can(user, "records.assign") || def.key === "tasks"}
           before={relatedPicker}

@@ -8,6 +8,9 @@ import { getRecord, insertRecord } from "../records";
 import { calendarEvent, connection, createResponseDraft, disconnect, mailActionsEnabled, matchSender, listFolders, message, messageHtml, moveMessage, safeFolder, setFlag, setPinned, setRead, type MailFull, sendDraft, updateDraft } from "../outlook";
 import { audit } from "../audit";
 import { get, run } from "../db";
+import { dropEmailLink, readEmailLink, saveEmailLink } from "../email-links";
+import { addEmailActivity, type AddinMail } from "../addin";
+import { canEdit } from "../records";
 
 const addr = (m: MailFull) => m.from?.emailAddress.address?.toLowerCase() ?? "";
 const plain = (m: MailFull) => (m.body?.content ?? m.bodyPreview ?? "").replace(/\r\n/g, "\n").trim().slice(0, 9000);
@@ -157,8 +160,9 @@ export async function logEmail(messageId: string, fd: FormData) {
 }
 
 /**
- * New opportunity from an email: named after the subject, for the sender's account and contact when the CRM
- * knows them, with the email on its timeline. Opens the opportunity's edit page to fill in the rest.
+ * New opportunity from an email: opens a draft New opportunity form, named after the subject, for the sender's
+ * account and contact when the CRM knows them. Nothing is created until the user saves it; then the email goes on
+ * its timeline (see attachEmailLink). Cancel goes back to the email and leaves nothing behind.
  */
 export async function opportunityFromEmail(messageId: string, fd: FormData) {
   const { user, m } = await load(messageId, fd);
@@ -166,20 +170,41 @@ export async function opportunityFromEmail(messageId: string, fd: FormData) {
   const match = visibleMatch(user, addr(m));
   const accountId = match.contact?.account_id && getRecord(RESOURCES.accounts, user, match.contact.account_id) ? match.contact.account_id : match.account?.id ?? null;
   const name = (m.subject ?? "").replace(/^\s*((re|fw|fwd|aw|tr)\s*:\s*)+/i, "").trim().slice(0, 200) || `Enquiry from ${addr(m)}`;
-  const r = insertRecord(RESOURCES.opportunities, user, {
-    name, account_id: accountId, contact_id: match.contact?.id ?? null, stage: "Lead Generated", forecast_category: "Pipeline",
-    source: "Email Campaign", owner_id: user.id, description: `From an email by ${m.from?.emailAddress.name ?? ""} <${addr(m)}> on ${m.receivedDateTime.slice(0, 10)}`,
+  const link = saveEmailLink(user.id, "graph", { id: messageId });
+  const q = new URLSearchParams({
+    name, stage: "Lead Generated", forecast_category: "Pipeline", source: "Email Campaign",
+    description: `From an email by ${m.from?.emailAddress.name ?? ""} <${addr(m)}> on ${m.receivedDateTime.slice(0, 10)}`, email: link,
   });
-  if (!r.ok) backTo(fd, messageId, `Couldn't create the opportunity: ${Object.values(r.errors ?? {})[0] ?? r.error ?? "unknown error"}`);
-  const oppId = (r as { id: string }).id;
+  if (accountId) q.set("account_id", accountId);
+  if (match.contact?.id) q.set("contact_id", match.contact.id);
+  redirect(`/opportunities/new?${q}`);
+}
+
+/**
+ * A record made from a draft that started from an email (see opportunityFromEmail) has just been saved:
+ * put that email on its timeline, keeping its Outlook formatting.
+ */
+export async function attachEmailLink(linkId: string, type: ResourceKey, recordId: string) {
+  const user = await requireUser();
+  const link = readEmailLink(user.id, linkId);
+  const rec = getRecord(RESOURCES[type], user, recordId);
+  if (!link || !rec || !canEdit(RESOURCES[type], user, rec)) return false;
+  dropEmailLink(linkId);
+  if (link.kind === "addin") {
+    const a = addEmailActivity(user, link.payload as AddinMail, type, recordId);
+    if (a.ok) await audit(user, "addin.create_opportunity", type, recordId, { activity: a.id });
+    return a.ok;
+  }
+  const messageId = String((link.payload as { id?: string }).id ?? "");
+  const m = await message(user.id, messageId).catch(() => null);
+  if (!m) return false;
   const a = insertRecord(RESOURCES.activities, user, {
     type: "Email", subject: (m.subject ?? "(no subject)").slice(0, 300), occurred_at: m.receivedDateTime.slice(0, 19).replace("T", " "),
     body: `From: ${m.from?.emailAddress.name ?? ""} <${addr(m)}>\n\n${plain(m)}`, owner_id: user.id,
-  }, { related_type: "opportunities", related_id: oppId });
+  }, { related_type: type, related_id: recordId });
   if (a.ok) await keepOriginal(user.id, a.id, messageId);
-  await audit(user, "outlook.create_opportunity", "opportunities", oppId);
-  revalidatePath("/", "layout");
-  redirect(`/opportunities/${oppId}/edit?msg=${encodeURIComponent("Opportunity created from the email (it's on the timeline). Check the details and save.")}`);
+  await audit(user, "outlook.create_opportunity", type, recordId, { activity: a.ok ? a.id : null });
+  return a.ok;
 }
 
 export async function leadFromEmail(messageId: string) {

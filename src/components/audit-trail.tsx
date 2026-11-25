@@ -1,13 +1,14 @@
 import { all } from "@/lib/db";
 import { dateTime } from "@/lib/format";
 import { Badge, Card } from "@/components/ui";
-import type { FieldChange } from "@/lib/reviews";
+import { canReview, type FieldChange } from "@/lib/reviews";
+import type { SessionUser } from "@/lib/auth/session";
 
 /**
  * Audit trail for one record: who did what and when, with every field's old and new value.
  * Built from the append-only audit log and the edit log (change_reviews); neither can be changed or deleted.
  */
-type Entry = { at: string; who: string; what: string; changes?: FieldChange[]; status?: string; reviewer?: string | null; reviewedAt?: string | null; note?: string | null; detail?: string };
+type Entry = { at: string; who: string; whoId?: string | null; what: string; changes?: FieldChange[]; status?: string; reviewer?: string | null; reviewedAt?: string | null; note?: string | null; detail?: string };
 
 const ACTION: Record<string, string> = {
   create: "Created",
@@ -23,6 +24,8 @@ const ACTION: Record<string, string> = {
   "webform.discard": "Rejected in web form review",
   "change.accept": "Edit accepted",
   "change.revoke": "Edit revoked",
+  deactivate: "Deactivated",
+  reactivate: "Reactivated",
 };
 
 function detailText(raw: string | null) {
@@ -39,8 +42,8 @@ function detailText(raw: string | null) {
 }
 
 export function auditEntries(entity: string, id: string): Entry[] {
-  const edits = all<{ user_name: string | null; changes: string; status: string; reviewer_name: string | null; reviewed_at: string | null; note: string | null; created_at: string }>(
-    `SELECT CASE WHEN u.is_system = 1 THEN 'System' ELSE u.name END user_name, c.changes, c.status, CASE WHEN rv.is_system = 1 THEN 'System' ELSE rv.name END reviewer_name, c.reviewed_at, c.note, c.created_at
+  const edits = all<{ user_id: string | null; user_name: string | null; changes: string; status: string; reviewer_name: string | null; reviewed_at: string | null; note: string | null; created_at: string }>(
+    `SELECT c.user_id, CASE WHEN u.is_system = 1 THEN 'System' ELSE u.name END user_name, c.changes, c.status, CASE WHEN rv.is_system = 1 THEN 'System' ELSE rv.name END reviewer_name, c.reviewed_at, c.note, c.created_at
        FROM change_reviews c LEFT JOIN users u ON u.id = c.user_id LEFT JOIN users rv ON rv.id = c.reviewer_id
       WHERE c.entity = ? AND c.record_id = ? ORDER BY c.created_at DESC LIMIT 300`, entity, id);
   const events = all<{ user_name: string | null; user_email: string | null; action: string; detail: string | null; created_at: string }>(
@@ -48,7 +51,7 @@ export function auditEntries(entity: string, id: string): Entry[] {
        FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
       WHERE a.entity = ? AND a.entity_id = ? ORDER BY a.id DESC LIMIT 300`, entity, id);
   const out: Entry[] = edits.map((e) => ({
-    at: e.created_at, who: e.user_name ?? "Unknown user", what: "Edited",
+    at: e.created_at, who: e.user_name ?? "Unknown user", whoId: e.user_id, what: "Edited",
     changes: Object.values(JSON.parse(e.changes) as Record<string, FieldChange>),
     status: e.status, reviewer: e.reviewer_name, reviewedAt: e.reviewed_at, note: e.note,
   }));
@@ -60,8 +63,10 @@ export function auditEntries(entity: string, id: string): Entry[] {
   return out.sort((x, y) => y.at.localeCompare(x.at));
 }
 
-export function AuditTrail({ entity, id }: { entity: string; id: string }) {
-  const entries = auditEntries(entity, id);
+export function AuditTrail({ entity, id, viewer }: { entity: string; id: string; viewer?: SessionUser }) {
+  // An edit waiting for review shows as "Pending" only to the people who can accept or revoke it.
+  const entries = auditEntries(entity, id).map((e) =>
+    e.status === "Pending" && !(viewer && canReview(viewer, e.whoId ?? null, entity)) ? { ...e, status: undefined } : e);
   return (
     <Card title={`Audit trail (${entries.length})`} pad={false}>
       {entries.length === 0 ? (

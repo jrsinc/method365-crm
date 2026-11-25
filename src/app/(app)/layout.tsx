@@ -6,7 +6,7 @@ import { PlainCopy } from "@/components/plain-copy";
 import { logout } from "@/lib/auth/login";
 import { APP_NAME, APP_VERSION, ENV_LABEL, ROLE_LABELS } from "@/lib/config";
 import { hiddenHrefs, roleLabel } from "@/lib/roles";
-import { pendingFor } from "@/lib/reviews";
+import { isReviewer, pendingFor } from "@/lib/reviews";
 import { getBranding, logoUrl } from "@/lib/branding";
 import { all, get, run } from "@/lib/db";
 import { revalidatePath } from "next/cache";
@@ -21,6 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     admin: can(user, "admin"),
     products: can(user, "products.manage"),
     superAdmin: user.role === "SUPER_ADMIN",
+    reviews: isReviewer(user),
   };
   const notices = all<{ id: number; title: string; href: string | null; read: number; created_at: string }>(
     "SELECT id, title, href, read, created_at FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 15", user.id);

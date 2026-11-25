@@ -12,6 +12,7 @@ import { fieldText } from "./format";
 import { baseCurrency } from "./settings";
 import { cleanHtml } from "./html-clean";
 import { audit } from "./audit";
+import { saveEmailLink } from "./email-links";
 
 /**
  * The Outlook add-in (a panel inside Outlook). Outlook shows the panel in a frame where the CRM's sign-in
@@ -104,7 +105,7 @@ function originalHtml(m: AddinMail) {
 
 const fromLine = (m: AddinMail) => `From: ${m.fromName} <${m.from}>\n\n${m.text}`;
 
-function addEmailActivity(user: SessionUser, m: AddinMail, type: string, id: string) {
+export function addEmailActivity(user: SessionUser, m: AddinMail, type: string, id: string) {
   const a = insertRecord(RESOURCES.activities, user, { type: "Email", subject: m.subject, occurred_at: m.date, body: fromLine(m), owner_id: user.id, duration_min: null }, { related_type: type, related_id: id });
   if (a.ok) { const h = originalHtml(m); if (h) run("UPDATE activities SET body_html = ? WHERE id = ?", h, a.id); }
   return a;
@@ -221,15 +222,15 @@ export async function createFromEmail(user: SessionUser, m: AddinMail, kind: Cre
     return { ok: true, message: `Account "${label}" created from ${domain}. Check the name and fill in the rest.`, url: `/accounts/${r.id}` };
   }
   if (kind === "opportunity") {
-    const r = insertRecord(RESOURCES.opportunities, user, {
-      name: cleanSubject.slice(0, 200) || `Enquiry from ${m.party}`, account_id: match.account?.id ?? null, contact_id: match.contact?.id ?? null,
-      stage: "Lead Generated", forecast_category: "Pipeline", source: "Email Campaign", owner_id: user.id,
-      description: `From an email by ${m.fromName} <${m.from}> on ${m.date.slice(0, 10)}`,
+    // Nothing is created yet: a draft form opens, filled in from the email. Save creates it (with the email on its timeline); Cancel leaves nothing.
+    const link = saveEmailLink(user.id, "addin", m);
+    const q = new URLSearchParams({
+      name: cleanSubject.slice(0, 200) || `Enquiry from ${m.party}`, stage: "Lead Generated", forecast_category: "Pipeline", source: "Email Campaign",
+      description: `From an email by ${m.fromName} <${m.from}> on ${m.date.slice(0, 10)}`, email: link,
     });
-    if (!r.ok) return fail(`Couldn't create the opportunity: ${firstError(r)}`);
-    addEmailActivity(user, m, "opportunities", r.id);
-    await audit(user, "addin.create_opportunity", "opportunities", r.id);
-    return { ok: true, message: "Opportunity created, with this email on its timeline. Open it to fill in the rest.", url: `/opportunities/${r.id}/edit` };
+    if (match.account?.id) q.set("account_id", match.account.id);
+    if (match.contact?.id) q.set("contact_id", match.contact.id);
+    return { ok: true, message: "A draft opportunity opens, filled in from this email. Press Create opportunity to save it, or Cancel and nothing is created.", url: `/opportunities/new?${q}` };
   }
   if (kind === "case") {
     const r = insertRecord(RESOURCES.cases, user, {

@@ -6,7 +6,7 @@ import { cx } from "./ui";
 import { Icon } from "./icons";
 import { PROVIDED_BY } from "@/lib/config";
 
-type Perms = { reports: boolean; bulk: boolean; forms: boolean; admin: boolean; products: boolean; superAdmin: boolean };
+type Perms = { reports: boolean; bulk: boolean; forms: boolean; admin: boolean; products: boolean; superAdmin: boolean; reviews?: boolean };
 type Item = { href: string; label: string; icon: string; show?: boolean; match?: string[]; badge?: number };
 
 export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendingReviews = 0, company }: {
@@ -76,7 +76,7 @@ export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendin
       title: "Team",
       items: [
         { href: "/organogram", label: "Organogram", icon: "users" },
-        { href: "/change-reviews", label: "Edit reviews", icon: "stamp", badge: pendingReviews },
+        { href: "/change-reviews", label: "Edit reviews", icon: "stamp", badge: pendingReviews, show: perms.reviews !== false },
         { href: "/access", label: "Access roles", icon: "shield", show: perms.superAdmin },
       ],
     },
@@ -90,6 +90,7 @@ export function Sidebar({ perms, appName, version, envLabel, hidden = [], pendin
         { href: "/outlook-addin", label: "Outlook add-in", icon: "mail", show: perms.superAdmin },
         { href: "/backup", label: "Backup & restore", icon: "database", show: perms.superAdmin },
         { href: "/audit-logs", label: "Audit Logs", icon: "shield", show: perms.admin },
+        { href: "/admin/deleted", label: "Deleted records", icon: "trash", show: perms.superAdmin },
         { href: "/settings", label: "Settings", icon: "gear", match: ["/settings", "/admin", "/profile", "/forms"] },
       ],
     },

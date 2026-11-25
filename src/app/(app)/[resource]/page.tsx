@@ -30,8 +30,11 @@ export default async function ListPage({ params, searchParams }: { params: Promi
 
   const filters: Record<string, string> = {};
   for (const f of def.fields) if ((f.filter || f.type === "user") && str(sp, f.name)) filters[f.name] = str(sp, f.name);
+  // Super Admins can look at deactivated records (hidden from everyone's lists otherwise).
+  const showDeactivated = user.role === "SUPER_ADMIN" && str(sp, "deactivated") === "1";
   const result = listRecords(def, user, {
     q: str(sp, "q"), filters, sort: str(sp, "sort") || undefined, dir: str(sp, "dir") || undefined, page: Number(str(sp, "page")) || 1,
+    deactivated: showDeactivated ? "only" : undefined,
   });
   const baseCode = baseCurrency().code;
   const readAll = canReadAll(def, user);
@@ -103,10 +106,14 @@ export default async function ListPage({ params, searchParams }: { params: Promi
         {def.key === "opportunities" && <LinkButton href="/pipeline">Board view</LinkButton>}
         {def.key === "activities" && <LinkButton href="/calendar">Calendar view</LinkButton>}
         {def.key === "catalogue" && <LinkButton href="/pricing/products">Sales &amp; supplier prices</LinkButton>}
+        {user.role === "SUPER_ADMIN" && (showDeactivated
+          ? <LinkButton href={base}>Back to active</LinkButton>
+          : <LinkButton href={`${base}?deactivated=1`} variant="ghost">Deactivated</LinkButton>)}
         {copy && copy.rows.length > 0 && <CopyTableButton headers={copy.headers} rows={copy.rows} />}
         {writable && <LinkButton href={`${base}/new`} variant="primary"><Icon name="plus" size={15} />{meta?.addLabel ?? `Add ${def.singular}`}</LinkButton>}
       </div>
       {msg && <Notice tone="green">{msg}</Notice>}
+      {showDeactivated && <div className="mt-3"><Notice tone="amber">Showing deactivated {def.label.toLowerCase()} only. Open one to reactivate or delete it.</Notice></div>}
       {stats.length > 0 && (
         <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
           {stats.map((s) => <KpiCard key={s.label} label={s.label} value={fmtStat(s)} hint={s.hint} icon={s.icon} tone={s.tone} />)}

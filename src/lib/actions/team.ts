@@ -9,7 +9,7 @@ import { all, get, run, tx } from "../db";
 import { audit } from "../audit";
 import { getResource } from "../resources";
 import { recalcQuote } from "../records";
-import { canReview, getReview, managerChain } from "../reviews";
+import { canReview, getReview, managerChain, type Review } from "../reviews";
 import { getRoles, invalidateRoles, MODULES, MODULE_LEVELS, type ModuleLevel, roleReturnTo } from "../roles";
 import type { Permission } from "../config";
 import { notify } from "../notify";
@@ -23,23 +23,14 @@ async function needPassword(user: SessionUser, fd: FormData, entity: string, id:
 
 /* ---------------- edit reviews ---------------- */
 
-/** A manager accepts an edit, or revokes it (puts the old values back). */
-export async function decideReview(id: string, decision: "accept" | "revoke", fd: FormData) {
-  const user = await requireUser();
-  const back = `/change-reviews?id=${id}`;
-  const r = getReview(id);
-  if (!r) go("/change-reviews", "That edit no longer exists.");
-  const review = r!;
-  if (review.status !== "Pending") go(back, `This edit was already ${review.status.toLowerCase()}.`);
-  if (!canReview(user, review.user_id, review.entity)) go(back, "Only the editor's manager can review this edit.");
-  await needPassword(user, fd, "change_reviews", id, back);
-  const note = String(fd.get("note") ?? "").trim().slice(0, 500) || null;
-
+/** Accept or revoke one pending edit (the caller has checked the password). Returns a short result, or an error. */
+async function applyDecision(user: SessionUser, review: Review, decision: "accept" | "revoke", note: string | null): Promise<{ ok: boolean; msg: string }> {
+  const back = `/change-reviews?id=${review.id}`;
   let msg = "Edit accepted.";
   if (decision === "revoke") {
     const def = getResource(review.entity);
     const current = def ? get<Record<string, unknown>>(`SELECT * FROM ${def.table} WHERE id = ?`, review.record_id) : undefined;
-    if (!def || !current) go(back, "The record has been deleted, so there's nothing to put back.");
+    if (!def || !current) return { ok: false, msg: "The record has been deleted, so there's nothing to put back." };
     const restore: Record<string, string | number | null> = {};
     const skipped: string[] = [];
     for (const [field, c] of Object.entries(review.changes)) {
@@ -59,14 +50,56 @@ export async function decideReview(id: string, decision: "accept" | "revoke", fd
       : `Nothing reverted: ${skipped.join(", ")} changed again since this edit.`;
   }
   run("UPDATE change_reviews SET status = ?, reviewer_id = ?, reviewed_at = datetime('now'), note = ? WHERE id = ?",
-    decision === "revoke" ? "Revoked" : "Accepted", user.id, note, id);
+    decision === "revoke" ? "Revoked" : "Accepted", user.id, note, review.id);
   if (review.user_id) {
     notify(review.user_id, `${user.name} ${decision === "revoke" ? "revoked" : "accepted"} your edit to ${review.record_title}${note ? `: ${note}` : ""}`,
       back, { heading: decision === "revoke" ? "Your edit was revoked" : "Your edit was accepted" });
   }
-  await audit(user, decision === "revoke" ? "change.revoke" : "change.accept", review.entity, review.record_id, { review: id, note });
+  await audit(user, decision === "revoke" ? "change.revoke" : "change.accept", review.entity, review.record_id, { review: review.id, note });
+  return { ok: true, msg };
+}
+
+/** A manager accepts an edit, or revokes it (puts the old values back). */
+export async function decideReview(id: string, decision: "accept" | "revoke", fd: FormData) {
+  const user = await requireUser();
+  const back = `/change-reviews?id=${id}`;
+  const r = getReview(id);
+  if (!r) go("/change-reviews", "That edit no longer exists.");
+  const review = r!;
+  if (review.status !== "Pending") go(back, `This edit was already ${review.status.toLowerCase()}.`);
+  if (!canReview(user, review.user_id, review.entity)) go(back, "Only the editor's manager can review this edit.");
+  await needPassword(user, fd, "change_reviews", id, back);
+  const note = String(fd.get("note") ?? "").trim().slice(0, 500) || null;
+  const res = await applyDecision(user, review, decision, note);
   revalidatePath("/", "layout");
-  go(back, msg);
+  go(back, res.msg);
+}
+
+/** Accept or revoke every ticked edit at once (one password). Edits this user can't review are skipped. */
+export async function decideReviews(fd: FormData) {
+  const user = await requireUser();
+  const decision = fd.get("decision") === "revoke" ? "revoke" : "accept";
+  const who = String(fd.get("who") ?? "");
+  const back = `/change-reviews?tab=mine-to-review${who ? `&who=${encodeURIComponent(who)}` : ""}`;
+  const ids = [...new Set(fd.getAll("ids").map(String))].slice(0, 500);
+  if (!ids.length) go(back, "Tick at least one edit first.");
+  await needPassword(user, fd, "change_reviews", null, back);
+  const note = String(fd.get("note") ?? "").trim().slice(0, 500) || null;
+  let done = 0, reverted = 0;
+  const problems: string[] = [];
+  for (const id of ids) {
+    const review = getReview(id);
+    if (!review || review.status !== "Pending" || !canReview(user, review.user_id, review.entity)) continue;
+    const res = await applyDecision(user, review, decision, note);
+    if (res.ok) { done++; if (decision === "revoke" && /^Edit revoked/.test(res.msg)) reverted++; }
+    else problems.push(`${review.record_title ?? "a record"}: ${res.msg}`);
+    if (res.ok && decision === "revoke" && /^Nothing reverted|Not reverted/.test(res.msg)) problems.push(`${review.record_title}: ${res.msg.replace(/^Edit revoked: /, "")}`);
+  }
+  revalidatePath("/", "layout");
+  const head = decision === "accept"
+    ? `${done} edit${done === 1 ? "" : "s"} accepted.`
+    : `${done} edit${done === 1 ? "" : "s"} revoked${reverted ? `; old values put back on ${reverted}` : ""}.`;
+  go(back, `${head}${problems.length ? ` Check: ${problems.slice(0, 5).join(" · ")}` : ""}`);
 }
 
 /* ---------------- organogram ---------------- */

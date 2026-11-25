@@ -49,6 +49,15 @@ export function canReview(user: SessionUser, editorId: string | null, entity?: s
   return managerChain(editorId).includes(user.id);
 }
 
+/**
+ * Does this user review anyone's edits? Super Admins, sales managers (account edits) and anyone with people
+ * reporting to them. Everyone else never sees review status: their edits just save.
+ */
+export function isReviewer(user: SessionUser) {
+  if (user.role === "SUPER_ADMIN" || user.role === "SALES_MANAGER") return true;
+  return !!get("SELECT 1 FROM users WHERE manager_id = ? AND id <> ? LIMIT 1", user.id, user.id);
+}
+
 /** Compare the record before and after an edit and log what changed. Returns the review id, or null if nothing changed. */
 export async function logChange(user: SessionUser, def: ResourceDef, before: Row, after: Row | null, how = "edit") {
   if (!after) return null;

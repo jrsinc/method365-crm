@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser, can } from "../auth/dal";
 import { getResource, NEW_REF, OTHER_REF, RELATABLE, RESOURCES, type ResourceDef, type ResourceKey } from "../resources";
 import {
-  canCreate, canDelete, canEdit, deleteRecordRow, getRecord, insertRecord, parseForm, scopeSql, updateRecord, type FieldErrors,
+  canCreate, canEdit, deleteRecordRow, getRecord, insertRecord, parseForm, recordsUsing, scopeSql, updateRecord, type FieldErrors,
 } from "../records";
 import { audit } from "../audit";
 import { tx, run, all, get } from "../db";
@@ -18,6 +18,7 @@ import { syncDiscountApproval } from "../discounts";
 import { writeQuoteItems } from "../quote-lines";
 import { recalcQuote } from "../records";
 import { notify } from "../notify";
+import { attachEmailLink } from "./mail";
 
 /** Lets the password dialog tell the user straight away if they mistyped. The edit itself re-checks. */
 /** Product Master "Copy product": checks the password, then opens a new product filled from this one (without its NDC / DIN number). */
@@ -219,23 +220,59 @@ export async function saveRecord(key: ResourceKey, id: string | null, _prev: For
     }
     await savePicklists(def, user, pick.allow);
     await audit(user, "create", key, savedId, lines ? { lines } : undefined);
+    // Started from an email (Outlook "Create opportunity"): the email goes on the new record's timeline now.
+    const emailLink = String(fd.get("$email_link") ?? "");
+    if (emailLink && RELATABLE.includes(key)) await attachEmailLink(emailLink, key, savedId);
   }
   revalidatePath("/", "layout");
   redirect(safeReturn(fd.get("returnTo")) ?? `/${key}/${savedId}`);
 }
 
+/** Super Admin: permanently delete a record. Needs a reason and the password; a copy and the reason are kept. */
 export async function deleteRecord(key: ResourceKey, id: string, fd: FormData) {
   const user = await requireUser();
   const def = getResource(key);
   if (!def) return;
   const row = getRecord(def, user, id);
   if (!row) redirect("/forbidden");
-  if (!canDelete(def, user, row)) {
+  const back = (msg: string): never => redirect(`/${key}/${id}?msg=${encodeURIComponent(msg)}`);
+  if (user.role !== "SUPER_ADMIN") {
     await audit(user, "delete.denied", key, id, { title: row.__title });
-    redirect(`/${key}/${id}?msg=${encodeURIComponent("Records can't be deleted. Change the status instead; the full history is kept.")}`);
+    back("Only a Super Admin can delete records. Change the status instead; the full history is kept.");
   }
-  deleteRecordRow(def, id);
-  void fd;
+  const reason = String(fd.get("reason") ?? "").trim().slice(0, 1000);
+  if (reason.length < 3) back("Not deleted: give a reason for deleting it.");
+  if (!(await confirmEdit(user, fd.get("$confirm_password"), key, id))) back("Not deleted: that password isn't right.");
+  const using = recordsUsing(def, id);
+  if (using.length) {
+    back(`Not deleted: ${using.map((u) => `${u.n} ${u.label.toLowerCase()}`).join(", ")} still use${using.length === 1 && using[0].n === 1 ? "s" : ""} this ${def.singular.toLowerCase()}. Deactivate it instead, or move or delete those first.`);
+  }
+  try {
+    deleteRecordRow(def, id, user.id, reason);
+  } catch (e) {
+    console.error("[delete]", e);
+    back("Not deleted: other records still depend on it. Deactivate it instead.");
+  }
+  await audit(user, "delete", key, id, { title: row!.__title, reason });
+  revalidatePath("/", "layout");
+  redirect(`/${key}?msg=${encodeURIComponent(`${String(row!.__title)} was deleted. The reason and a copy are kept in Deleted records.`)}`);
+}
+
+/** Super Admin: deactivate a record (hidden from lists and pickers, kept) or reactivate it. */
+export async function setDeactivated(key: ResourceKey, id: string, on: boolean, fd: FormData) {
+  const user = await requireUser();
+  const def = getResource(key);
+  if (!def) return;
+  const row = getRecord(def, user, id);
+  if (!row) redirect("/forbidden");
+  const back = (msg: string): never => redirect(`/${key}/${id}?msg=${encodeURIComponent(msg)}`);
+  if (user.role !== "SUPER_ADMIN") back("Only a Super Admin can deactivate records.");
+  if (!(await confirmEdit(user, fd.get("$confirm_password"), key, id))) back("Nothing changed: that password isn't right.");
+  const reason = String(fd.get("reason") ?? "").trim().slice(0, 1000) || null;
+  run(`UPDATE ${def.table} SET deactivated_at = ${on ? "datetime('now')" : "NULL"} WHERE id = ?`, id);
+  await audit(user, on ? "deactivate" : "reactivate", key, id, { title: row!.__title, reason });
+  revalidatePath("/", "layout");
+  back(on ? `Deactivated. It no longer shows in lists or drop-downs; reactivate it any time.` : "Reactivated. It shows in lists again.");
 }
 
 export async function bulkAction(key: ResourceKey, fd: FormData) {

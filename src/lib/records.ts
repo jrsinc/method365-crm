@@ -113,12 +113,16 @@ export type ListQuery = {
   page?: number;
   where?: { col: string; value: string };
   pageSize?: number;
+  /** "only": just deactivated records; "include": both. Default: active records only. */
+  deactivated?: "only" | "include";
 };
 
 export function buildWhere(def: ResourceDef, user: SessionUser, query: ListQuery) {
   const scope = scopeSql(def, user);
   const where: string[] = [scope.sql];
   if (def.baseWhere) where.push(def.baseWhere("t"));
+  if (query.deactivated === "only") where.push("t.deactivated_at IS NOT NULL");
+  else if (query.deactivated !== "include") where.push("t.deactivated_at IS NULL");
   const params: Params = [...scope.params];
   if (query.q?.trim()) {
     where.push(`(${def.searchable.map((c) => `t.${c} LIKE ?`).join(" OR ")})`);
@@ -175,7 +179,7 @@ export function refOptions(key: ResourceKey, user: SessionUser, limit = 500) {
   const def = RESOURCES[key];
   const scope = scopeSql(def, user);
   return all<{ id: string; label: string }>(
-    `SELECT t.id, ${def.titleSql("t")} AS label FROM ${def.table} t WHERE ${scope.sql} ORDER BY label LIMIT ?`,
+    `SELECT t.id, ${def.titleSql("t")} AS label FROM ${def.table} t WHERE ${scope.sql} AND t.deactivated_at IS NULL ORDER BY label LIMIT ?`,
     ...scope.params, limit,
   );
 }
@@ -490,8 +494,34 @@ export function updateRecord(
 }
 
 /** Deleting records is switched off for everyone (see canDelete). Kept so any old caller fails loudly. */
-export function deleteRecordRow(def: ResourceDef, id: string): never {
-  throw new Error(`Deleting is not allowed (${def.key} ${id}).`);
+/**
+ * Other records that still point at this one (an account's contacts, a product's quote lines…), by module.
+ * Only standalone records count; a record's own lines (quote items, opportunity products) go with it.
+ */
+export function recordsUsing(def: ResourceDef, id: string): { label: string; n: number }[] {
+  const out: { label: string; n: number }[] = [];
+  const tables = new Map(Object.values(RESOURCES).map((d) => [d.table, d.label] as const));
+  for (const [t, label] of tables) {
+    const fks = all<{ table: string; from: string }>(`PRAGMA foreign_key_list(${t})`).filter((k) => k.table === def.table);
+    for (const k of fks) {
+      if (t === def.table && k.from === "id") continue;
+      const n = get<{ n: number }>(`SELECT COUNT(*) n FROM ${t} WHERE ${k.from} = ? AND id <> ?`, id, id)?.n ?? 0;
+      if (n) out.push({ label, n });
+    }
+  }
+  return out;
+}
+
+/** Permanently removes a record (Super Admin; the caller has checked the reason and password). Keeps a copy in deleted_records. */
+export function deleteRecordRow(def: ResourceDef, id: string, by: string, reason: string) {
+  const row = get<Record<string, unknown>>(`SELECT * FROM ${def.table} WHERE id = ?`, id);
+  if (!row) return;
+  const title = get<{ t: string }>(`SELECT ${def.titleSql("t")} AS t FROM ${def.table} t WHERE t.id = ?`, id)?.t ?? null;
+  tx(() => {
+    run("INSERT INTO deleted_records (id, entity, record_id, title, data, reason, deleted_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      newId(), def.key, id, title, JSON.stringify(row), reason, by);
+    run(`DELETE FROM ${def.table} WHERE id = ?`, id);
+  });
 }
 
 export function distinctValues(def: ResourceDef, col: string) {

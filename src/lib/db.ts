@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { seed } from "./seed";
+import { RESOURCES } from "./resources";
 import { CREATED_BY_TABLES, ROLE_LABELS, ROLE_PERMISSIONS, SYSTEM_ADMIN_EMAIL } from "./config";
 
 const DB_PATH = process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "crm.db");
@@ -353,6 +354,11 @@ CREATE TABLE IF NOT EXISTS deal_lines (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS email_links (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL, payload TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS mailbox_connections (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   email TEXT, access_token TEXT NOT NULL, refresh_token TEXT, expires_at INTEGER NOT NULL,
@@ -405,6 +411,16 @@ export function closeDb() {
 /** Bring an existing database up to date without losing data. Safe to run on every start. */
 function migrate(db: DatabaseSync) {
   const cols = (t: string) => (db.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).map((c) => c.name);
+  // Super Admins can deactivate a record (hidden from lists and pickers, kept, can be reactivated) or delete it
+  // (removed, with a copy and the reason kept in deleted_records).
+  for (const t of new Set(Object.values(RESOURCES).map((d) => d.table))) {
+    const c = cols(t);
+    if (c.length && !c.includes("deactivated_at")) db.exec(`ALTER TABLE ${t} ADD COLUMN deactivated_at TEXT`);
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS deleted_records (
+    id TEXT PRIMARY KEY, entity TEXT NOT NULL, record_id TEXT NOT NULL, title TEXT, data TEXT NOT NULL, reason TEXT NOT NULL,
+    deleted_by TEXT REFERENCES users(id) ON DELETE SET NULL, deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
   if (!cols("sourcing_requests").includes("supplier_id")) {
     db.exec("ALTER TABLE sourcing_requests ADD COLUMN supplier_id TEXT REFERENCES suppliers(id) ON DELETE SET NULL");
   }

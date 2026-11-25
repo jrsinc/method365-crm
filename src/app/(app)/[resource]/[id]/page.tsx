@@ -6,7 +6,7 @@ import { getResource, RESOURCES, type ResourceDef } from "@/lib/resources";
 import { canCreate, canEdit, getRecord, listRecords, refOptions, scopeSql } from "@/lib/records";
 import { date, money, money2 } from "@/lib/format";
 import { linkExistingQuote } from "@/lib/actions/deal-lines";
-import { copyProduct, quickUpdateForm, saveRecord } from "@/lib/actions/records";
+import { copyProduct, deleteRecord, quickUpdateForm, saveRecord, setDeactivated } from "@/lib/actions/records";
 import { RecordLayout } from "@/components/record-layout";
 import { PasswordForm } from "@/components/password-prompt";
 import { convertLead, createSalesOrder, decideDiscount } from "@/lib/actions/sales";
@@ -82,6 +82,9 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
         }
       />
 
+      {row.deactivated_at ? (
+        <div className="mb-4"><Notice tone="amber">This {def.singular.toLowerCase()} was deactivated on {dateTime(row.deactivated_at)}. It&apos;s hidden from lists and drop-downs{user.role === "SUPER_ADMIN" ? "; reactivate it at the bottom of the page" : ""}.</Notice></div>
+      ) : null}
       {msg && <div className="mb-4"><Notice tone={/needs your manager|waiting for manager/i.test(msg) ? "amber" : /n't|not |can't|different|already/i.test(msg) ? "red" : "green"}>{msg}</Notice></div>}
       <RecordLayout
         counts={def.timeline ? { tasks: openTaskCount(def, id, user) } : undefined}
@@ -128,7 +131,8 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
           ) : null}
 
           {def.related?.map((rel) => <RelatedTable key={rel.resource + rel.fk} parent={def} parentId={id} rel={rel} user={user} />)}
-          <AuditTrail entity={def.key} id={id} />
+          <AuditTrail entity={def.key} id={id} viewer={user} />
+          {user.role === "SUPER_ADMIN" && <AdminRecordActions def={def} id={id} title={String(row.__title)} deactivated={!!row.deactivated_at} />}
         </>}
         side={<>
           {def.key === "leads" && <ConvertPanel row={row} editable={editable} user={user} />}
@@ -143,6 +147,34 @@ export default async function DetailPage({ params, searchParams }: { params: Pro
         </>}
       />
     </div>
+  );
+}
+
+/** Super Admin only: deactivate / reactivate, or delete with a reason. */
+function AdminRecordActions({ def, id, title, deactivated }: { def: ResourceDef; id: string; title: string; deactivated: boolean }) {
+  const noun = def.singular.toLowerCase();
+  return (
+    <Card title="Deactivate or delete (Super Admin)">
+      <div className="grid gap-5 md:grid-cols-2">
+        <form action={setDeactivated.bind(null, def.key, id, !deactivated)} className="space-y-2"
+          data-confirm-password={`Enter your password to ${deactivated ? "reactivate" : "deactivate"} "${title}".`}>
+          <p className="text-sm font-medium">{deactivated ? "Reactivate" : "Deactivate"}</p>
+          <p className="text-xs text-ink-2">{deactivated
+            ? `Shows this ${noun} in lists and drop-downs again.`
+            : `Hides this ${noun} from lists and drop-downs. Nothing is removed and you can reactivate it any time.`}</p>
+          {!deactivated && <Input name="reason" placeholder="Reason (optional)" aria-label="Reason for deactivating" />}
+          <button type="submit" className="inline-flex h-9 items-center rounded-md border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2">{deactivated ? "Reactivate" : "Deactivate"}</button>
+        </form>
+        <form action={deleteRecord.bind(null, def.key, id)} className="space-y-2"
+          data-confirm-password={`Enter your password to permanently delete "${title}".`}>
+          <p className="text-sm font-medium text-danger">Delete permanently</p>
+          <p className="text-xs text-ink-2">Removes this {noun} for good. A copy and your reason are kept in Deleted records. Not possible while other records still use it.</p>
+          <Label htmlFor="del_reason" required>Reason for deleting</Label>
+          <Textarea id="del_reason" name="reason" required minLength={3} rows={2} placeholder="e.g. Duplicate of another account; created by mistake" />
+          <button type="submit" className="inline-flex h-9 items-center rounded-md border border-danger/40 bg-surface px-3 text-sm font-medium text-danger hover:bg-danger-soft">Delete {noun}</button>
+        </form>
+      </div>
+    </Card>
   );
 }
 

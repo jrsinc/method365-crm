@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 import { Icon } from "./icons";
+import { SearchSelect } from "./search-select";
 
 export function cx(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(" ");
@@ -36,7 +37,8 @@ export function Input(p: ComponentProps<"input">) {
   return <input {...p} className={cx(inputClass, widthOf(p.className), p.className)} />;
 }
 export function Select(p: ComponentProps<"select">) {
-  return <select {...p} className={cx(inputClass, widthOf(p.className), "pr-8", p.className)} />;
+  // Every drop-down can be typed in to find an option (see SearchSelect).
+  return <SearchSelect {...p} className={cx(inputClass, widthOf(p.className), "pr-8", p.className)} />;
 }
 export function Textarea(p: ComponentProps<"textarea">) {
   return <textarea rows={4} {...p} className={cx(inputClass, "w-full h-auto py-2", p.className)} />;
